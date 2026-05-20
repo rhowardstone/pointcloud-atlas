@@ -6,26 +6,41 @@ filterable, lasso-selectable scatter with 2D/3D projections — no build step fo
 viewer. The entire UI (title, color-by attributes, palettes, legend, projections,
 hover fields) is declared in data, so a new dataset is a *config*, not a fork.
 
-![clusters](docs/verify-03-stripped-clusters.jpeg)
+![color by cell type](docs/walk-01-celltypes.jpeg)
+
+**→ [Full feature walkthrough with screenshots](docs/WALKTHROUGH.md)**
 
 ## Why
 
-Plotting tools choke past ~10⁴ points; this renders 10⁴–10⁶+ as binary buffers
-streamed straight into GPU typed arrays. One engine serves many projects: each is
-just its own buffer set.
+Most plotting tools choke past ~10⁴ points; this streams binary buffers straight
+into GPU typed arrays instead. The same engine runs in production at **1,336,165
+points + 2,438,403 edges** — that scale is the whole reason for the binary contract
+(don't switch it to JSON). One engine serves many projects: each is just its own
+buffer set. The two bundled examples are intentionally small (2.7k and 1.8k points)
+so they start instantly.
 
 ## Quick start
 
+The example data is committed, so you can serve it immediately — no build step:
+
 ```bash
-# build the bundled single-cell example (PBMC 3k) — needs scanpy/anndata
-python3 examples/singlecell/build.py
-# serve engine + that example's data
-python3 serve.py examples/singlecell 8770
-# open http://127.0.0.1:8770/
+python3 serve.py examples/singlecell 8770   # open http://127.0.0.1:8770/
+python3 serve.py examples/digits     8771   # a different domain, with hover thumbnails
 ```
 
-Color by a categorical attribute (clusters) or a continuous one (a gene's expression);
-toggle UMAP/t-SNE in 2D/3D; lasso-select.
+To regenerate (or build your own), run an example's `build.py`:
+
+```bash
+python3 examples/digits/build.py            # self-contained (sklearn); rebuilds data/ + thumbs
+python3 examples/singlecell/build.py        # self-contained (downloads PBMC 3k via scanpy)
+```
+
+## Examples
+
+| Example | What | Shows |
+|---|---|---|
+| [`examples/singlecell`](examples/singlecell/) | PBMC 3k cells (named cell types, marker genes, QC) | categorical + continuous color/filter, search, size-by |
+| [`examples/digits`](examples/digits/) | sklearn handwritten digits (10 classes, image thumbnails) | domain-agnostic; **hover thumbnails / link-to-source** |
 
 ## Use it for your own data
 
@@ -54,8 +69,9 @@ Then serve `engine/index.html` with the buffer dir at `/data/`. The engine reads
 | `engine/index.html` | The viewer (self-contained; deck.gl from CDN). The maintained artifact. |
 | `engine/_generalize.js` | The config-driven layer (color/legend/hover/labels/dropdowns) embedded in the viewer. |
 | `packer/pack.py` | Generic packer: arrays + `Attribute`s → buffers + `manifest.json`. |
-| `examples/singlecell/` | PBMC-3k example (`build.py` + packed `data/`). |
+| `examples/singlecell/`, `examples/digits/` | runnable, documented examples (`build.py` + packed `data/`). |
 | `serve.py` | Dev server: `/` → engine, `/data/` → an example's buffers. |
+| `docs/WALKTHROUGH.md` | feature tour with screenshots. |
 | `docs/DATA_CONTRACT.md` | Binary buffer + manifest/config spec. |
 
 ## Features

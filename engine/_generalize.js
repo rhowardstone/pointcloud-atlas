@@ -198,9 +198,9 @@
     const s = document.getElementById(id), vEl = document.getElementById(id + '-v');
     if (s) s.value = v; if (vEl) vEl.textContent = (id === 't-abase') ? String(v) : (+v).toFixed(2);
   }
-  function tuneDefaults() {            // points are sparse vs the 1.3M corpus — bump for visibility
-    if (typeof tune === 'object') { tune.aBase = 170; tune.rBase = 1.1; }
-    setSlider('t-abase', 170); setSlider('t-rbase', 1.1);
+  function tuneDefaults() {            // points are sparse vs the 1.3M corpus — bump size+alpha for visibility
+    if (typeof tune === 'object') { tune.aBase = 175; tune.rBase = 2.2; tune.rBaseMax = Math.max(tune.rBaseMax || 0, 2.2); }
+    setSlider('t-abase', 175); setSlider('t-rbase', 2.2);
   }
   function installSizeBy() {
     const row = document.getElementById('t-sizebylen');

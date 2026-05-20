@@ -17,7 +17,8 @@ EXAMPLE = Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else HERE / "examples
 DATA = EXAMPLE / "data"
 PORT = int(sys.argv[2]) if len(sys.argv) > 2 else 8770
 CT = {".json": "application/json", ".bin": "application/octet-stream",
-      ".gz": "application/gzip", ".html": "text/html; charset=utf-8"}
+      ".gz": "application/gzip", ".html": "text/html; charset=utf-8",
+      ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg"}
 
 
 class H(BaseHTTPRequestHandler):

@@ -1,0 +1,164 @@
+{
+  "n_nodes": 1797,
+  "n_edges": 0,
+  "node_struct": "<ffHHHBB",
+  "edge_struct": "<IIB",
+  "node_struct_3d": "<fff",
+  "xyz_bytes_per_node": 12,
+  "has_3d": true,
+  "x_range": [
+    -9.282745361328125,
+    17.551067352294922
+  ],
+  "y_range": [
+    -7.440085411071777,
+    17.086193084716797
+  ],
+  "z_range": [
+    -7.930699825286865,
+    14.333906173706055
+  ],
+  "built_at": 1779299642,
+  "config": {
+    "title": "Handwritten digits (sklearn)",
+    "node_label": "digits",
+    "id_label": "sample",
+    "primary_2d": "umap",
+    "views_2d": [
+      "tsne",
+      "umap"
+    ],
+    "views_3d": [
+      "tsne",
+      "umap"
+    ],
+    "view_labels": {
+      "umap": "UMAP",
+      "tsne": "t-SNE"
+    },
+    "color_by": [
+      {
+        "key": "digit",
+        "label": "digit",
+        "kind": "categorical",
+        "source": "struct:s0",
+        "legend": true,
+        "vocab": [
+          "0",
+          "1",
+          "2",
+          "3",
+          "4",
+          "5",
+          "6",
+          "7",
+          "8",
+          "9"
+        ],
+        "palette": [
+          [
+            31,
+            119,
+            180
+          ],
+          [
+            255,
+            127,
+            14
+          ],
+          [
+            44,
+            160,
+            44
+          ],
+          [
+            214,
+            39,
+            40
+          ],
+          [
+            148,
+            103,
+            189
+          ],
+          [
+            140,
+            86,
+            75
+          ],
+          [
+            227,
+            119,
+            194
+          ],
+          [
+            127,
+            127,
+            127
+          ],
+          [
+            188,
+            189,
+            34
+          ],
+          [
+            23,
+            190,
+            207
+          ]
+        ]
+      },
+      {
+        "key": "mean_intensity",
+        "label": "mean intensity",
+        "kind": "continuous",
+        "source": "num:mean_intensity",
+        "legend": true,
+        "colormap": "viridis",
+        "range": [
+          2.890625,
+          6.765625
+        ]
+      },
+      {
+        "key": "pca1",
+        "label": "PC 1",
+        "kind": "continuous",
+        "source": "num:pca1",
+        "legend": true,
+        "colormap": "plasma",
+        "range": [
+          -31.169904708862305,
+          31.700124740600586
+        ]
+      }
+    ],
+    "filters": [
+      {
+        "key": "digit",
+        "label": "digit",
+        "kind": "categorical",
+        "source": "struct:s0"
+      },
+      {
+        "key": "mean_intensity",
+        "label": "mean intensity",
+        "kind": "continuous",
+        "source": "num:mean_intensity"
+      },
+      {
+        "key": "pca1",
+        "label": "PC 1",
+        "kind": "continuous",
+        "source": "num:pca1"
+      }
+    ],
+    "hover": [
+      "digit",
+      "mean_intensity"
+    ],
+    "link_template": null,
+    "thumb_template": "/data/thumbs/{id}.png",
+    "feature_endpoint": null
+  }
+}
