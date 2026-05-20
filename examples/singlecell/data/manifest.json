@@ -18,7 +18,7 @@
     -3.968986988067627,
     12.007377624511719
   ],
-  "built_at": 1779295197,
+  "built_at": 1779298561,
   "config": {
     "title": "PBMC 3k \u2014 single-cell atlas",
     "node_label": "cells",
@@ -272,6 +272,7 @@
       "n_genes"
     ],
     "link_template": null,
+    "thumb_template": null,
     "feature_endpoint": null,
     "modality": "RNA"
   }

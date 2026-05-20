@@ -62,10 +62,8 @@
         col = ramp(CM[c.colormap] || CM.viridis, hi > lo ? (valOf(d, c) - lo) / (hi - lo) : 0);
       }
     }
-    // engine auto-dims alpha for 1.3M-point overplotting; for smaller sets keep
-    // points solid so they stay visible (floor at 200).
-    const alpha = Math.max(200, (typeof currentZoomAlpha === 'number' ? currentZoomAlpha : 220));
-    return [col[0], col[1], col[2], alpha];
+    // respect the Display-panel alpha slider (drives currentZoomAlpha)
+    return [col[0], col[1], col[2], (typeof currentZoomAlpha === 'number' ? currentZoomAlpha : 200)];
   };
 
   // ---- legend override ----------------------------------------------------
@@ -93,14 +91,31 @@
   const labelFor = (d, c) => c.kind === 'categorical'
     ? (c.vocab[codeOf(d, c)] ?? '?')
     : (+valOf(d, c)).toPrecision(3);
+  const fillTpl = (tpl, id) => tpl.replace(/\{id\}/g, encodeURIComponent(id));
   renderHoverContent = function (obj) {
+    const nidEl = document.getElementById('hover-nid');
     const t = document.getElementById('hover-title');
     const m = document.getElementById('hover-meta');
-    if (t) { t.style.display = ''; t.textContent = `${cfg.id_label || 'id'}: ${obj.nid}`; }
+    if (nidEl) nidEl.textContent = `${cfg.id_label || 'id'}: ${obj.nid}`;
+    if (t) t.style.display = 'none';
     if (m) {
       m.innerHTML = (cfg.hover || []).map(k => spec[k]
         ? `<div><span style="color:var(--muted)">${spec[k].label}:</span> ${labelFor(obj, spec[k])}</div>`
         : '').join('');
+    }
+    // optional source thumbnail + link-out, driven by config templates
+    const thumb = document.getElementById('hover-thumb');
+    if (thumb) {
+      if (cfg.thumb_template) {
+        thumb.innerHTML = `<img src="${fillTpl(cfg.thumb_template, obj.nid)}" alt="" `
+          + `style="max-width:100%;border-radius:4px;" onerror="this.style.display='none'">`;
+        thumb.style.display = '';
+      } else { thumb.style.display = 'none'; }
+    }
+    const open = document.getElementById('hover-open');
+    if (open) {
+      if (cfg.link_template) { open.href = fillTpl(cfg.link_template, obj.nid); open.style.display = ''; }
+      else open.style.display = 'none';
     }
   };
 
@@ -110,7 +125,11 @@
   if (titleEl) titleEl.textContent = cfg.title;
   document.body.classList.remove('has-filterbar');
   ['filterbar'].forEach(id => { const e = document.getElementById(id); if (e) e.style.display = 'none'; });
-  document.querySelectorAll('.search').forEach(e => e.style.display = 'none');
+  // make the lasso ellipse clearly visible (the default fill/stroke are very faint)
+  const lst = document.createElement('style');
+  lst.textContent = '#lasso-ellipse{fill:rgba(122,176,255,0.14)!important;stroke:#9ec1ff!important;'
+    + 'stroke-width:2.5!important;stroke-dasharray:6 4!important;}';
+  document.head.appendChild(lst);
 
   // ---- color-by dropdown from config --------------------------------------
   const cb = document.getElementById('color-by');
@@ -135,9 +154,88 @@
   const meta = document.getElementById('meta-counter');
   if (meta) meta.textContent = meta.textContent.replace(/\bdocs\b/, cfg.node_label || 'nodes');
 
+  const rerender = () => { if (typeof deck !== 'undefined' && deck)
+    deck.setProps({ layers: buildLayers(currentViewState) }); };
+
+  // ---- Display panel: better defaults + generic "Size by" ------------------
+  function setSlider(id, v) {
+    const s = document.getElementById(id), vEl = document.getElementById(id + '-v');
+    if (s) s.value = v; if (vEl) vEl.textContent = (id === 't-abase') ? String(v) : (+v).toFixed(2);
+  }
+  function tuneDefaults() {            // points are sparse vs the 1.3M corpus — bump for visibility
+    if (typeof tune === 'object') { tune.aBase = 170; tune.rBase = 1.1; }
+    setSlider('t-abase', 170); setSlider('t-rbase', 1.1);
+  }
+  function installSizeBy() {
+    const row = document.getElementById('t-sizebylen');
+    if (!row) return;
+    const num = cfg.color_by.filter(c => c.kind === 'continuous');
+    const sel = document.createElement('select');
+    sel.id = 't-sizeby'; sel.style.cssText = 'width:100%;font-size:10px;';
+    sel.innerHTML = '<option value="">uniform</option>' +
+      num.map(c => `<option value="${c.key}">${c.label}</option>`).join('');
+    const lbl = row.previousElementSibling; if (lbl) lbl.textContent = 'size by';
+    row.replaceWith(sel);
+    sel.addEventListener('change', () => {
+      const key = sel.value;
+      if (!key) { window.__sizeVals = null; sizeByLen = false; }
+      else {
+        const a = sizeArr[key];
+        if (a) {
+          let lo = Infinity, hi = -Infinity;
+          for (const v of a) { if (v < lo) lo = v; if (v > hi) hi = v; }
+          const span = hi > lo ? hi - lo : 1;
+          window.__sizeVals = Float32Array.from(a, v => 1 + ((v - lo) / span) * 63); // -> [1,64]
+          sizeByLen = true;
+        }
+      }
+      window.__sizeVersion = (window.__sizeVersion || 0) + 1;
+      activeDataCache = null; rerender();
+    });
+  }
+
+  // ---- Generic metadata search (subsets the cloud; results link to source) ─
+  const catSpecs = cfg.color_by.filter(c => c.kind === 'categorical');
+  const docText = d => {
+    let s = String(d.nid).toLowerCase();
+    for (const c of catSpecs) s += ' ' + String((c.vocab[codeOf(d, c)] ?? '')).toLowerCase();
+    return s;
+  };
+  function wireSearch() {
+    const box = document.getElementById('search');
+    const res = document.getElementById('search-results');
+    if (!box) return;
+    box.placeholder = 'Search ' + (cfg.id_label || 'id') + ' or metadata…';
+    let deb;
+    box.addEventListener('input', () => { clearTimeout(deb); deb = setTimeout(run, 200); });
+    function run() {
+      const q = box.value.trim().toLowerCase();
+      if (!q) { setSingularConstraint('search', null); recomputeComposite();
+                if (res) { res.innerHTML = ''; res.style.display = 'none'; } return; }
+      const match = new Set(); const rows = [];
+      for (const d of docs) if (docText(d).includes(q)) {
+        match.add(d.nid); if (rows.length < 50) rows.push(d);
+      }
+      setSingularConstraint('search', { label: 'search: ' + q, glyph: '🔍', matchSet: match });
+      recomputeComposite();
+      if (res) {
+        res.innerHTML = rows.map(d => `<div class="row" data-id="${d.nid}">`
+          + `<span class="id">${d.nid}</span></div>`).join('')
+          || '<div class="row" style="color:var(--muted)">no matches</div>';
+        res.style.display = '';
+        res.querySelectorAll('.row[data-id]').forEach(r =>
+          r.addEventListener('click', () => { if (window.atlasPin) window.atlasPin(r.dataset.id); }));
+      }
+    }
+  }
+
   // ---- apply ---------------------------------------------------------------
+  let sizeArr = num;  // alias the continuous-sidecar map for installSizeBy
   loadSidecars().then(() => {
+    tuneDefaults();
+    installSizeBy();
+    wireSearch();
     buildLegend();
-    if (typeof deck !== 'undefined' && deck) deck.setProps({ layers: buildLayers(currentViewState) });
+    rerender();
   });
 })();

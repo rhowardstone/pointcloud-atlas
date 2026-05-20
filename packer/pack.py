@@ -93,6 +93,7 @@ def pack_atlas(
     id_label: str = "id",
     hover_fields: list[str] | None = None,
     link_template: str | None = None,
+    thumb_template: str | None = None,
     feature_endpoint: str | None = None,
     view_labels: dict[str, str] | None = None,
     extra_config: dict | None = None,
@@ -195,7 +196,8 @@ def pack_atlas(
         "view_labels": view_labels,
         "color_by": color_by, "filters": filters,
         "hover": hover_fields or [a["key"] for a in color_by],
-        "link_template": link_template, "feature_endpoint": feature_endpoint,
+        "link_template": link_template, "thumb_template": thumb_template,
+        "feature_endpoint": feature_endpoint,
     }
     if extra_config:
         config.update(extra_config)
