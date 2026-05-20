@@ -1,0 +1,278 @@
+{
+  "n_nodes": 2700,
+  "n_edges": 32656,
+  "node_struct": "<ffHHHBB",
+  "edge_struct": "<IIB",
+  "node_struct_3d": "<fff",
+  "xyz_bytes_per_node": 12,
+  "has_3d": true,
+  "x_range": [
+    -12.26020622253418,
+    12.360931396484375
+  ],
+  "y_range": [
+    -3.968080520629883,
+    16.066011428833008
+  ],
+  "z_range": [
+    -3.968986988067627,
+    12.007377624511719
+  ],
+  "built_at": 1779295197,
+  "config": {
+    "title": "PBMC 3k \u2014 single-cell atlas",
+    "node_label": "cells",
+    "id_label": "barcode",
+    "primary_2d": "umap",
+    "views_2d": [
+      "tsne",
+      "umap"
+    ],
+    "views_3d": [
+      "tsne",
+      "umap"
+    ],
+    "view_labels": {
+      "umap": "UMAP",
+      "tsne": "t-SNE"
+    },
+    "color_by": [
+      {
+        "key": "cluster",
+        "label": "cluster",
+        "kind": "categorical",
+        "source": "struct:s0",
+        "legend": true,
+        "vocab": [
+          "0",
+          "1",
+          "2",
+          "3",
+          "4",
+          "5",
+          "6",
+          "7",
+          "8",
+          "9"
+        ],
+        "palette": [
+          [
+            31,
+            119,
+            180
+          ],
+          [
+            255,
+            127,
+            14
+          ],
+          [
+            44,
+            160,
+            44
+          ],
+          [
+            214,
+            39,
+            40
+          ],
+          [
+            148,
+            103,
+            189
+          ],
+          [
+            140,
+            86,
+            75
+          ],
+          [
+            227,
+            119,
+            194
+          ],
+          [
+            127,
+            127,
+            127
+          ],
+          [
+            188,
+            189,
+            34
+          ],
+          [
+            23,
+            190,
+            207
+          ]
+        ]
+      },
+      {
+        "key": "library",
+        "label": "library",
+        "kind": "categorical",
+        "source": "struct:s1",
+        "legend": true,
+        "vocab": [
+          "pbmc3k"
+        ],
+        "palette": [
+          [
+            31,
+            119,
+            180
+          ]
+        ]
+      },
+      {
+        "key": "n_genes",
+        "label": "genes detected",
+        "kind": "continuous",
+        "source": "num:n_genes",
+        "legend": true,
+        "colormap": "viridis",
+        "range": [
+          212.0,
+          3422.0
+        ]
+      },
+      {
+        "key": "pct_mt",
+        "label": "% mito",
+        "kind": "continuous",
+        "source": "num:pct_mt",
+        "legend": true,
+        "colormap": "magma",
+        "range": [
+          0.0,
+          22.569026947021484
+        ]
+      },
+      {
+        "key": "CD3D",
+        "label": "CD3D expr",
+        "kind": "continuous",
+        "source": "num:CD3D",
+        "legend": true,
+        "colormap": "inferno",
+        "range": [
+          0.0,
+          5.092195987701416
+        ]
+      },
+      {
+        "key": "MS4A1",
+        "label": "MS4A1 expr",
+        "kind": "continuous",
+        "source": "num:MS4A1",
+        "legend": true,
+        "colormap": "inferno",
+        "range": [
+          0.0,
+          4.29580020904541
+        ]
+      },
+      {
+        "key": "NKG7",
+        "label": "NKG7 expr",
+        "kind": "continuous",
+        "source": "num:NKG7",
+        "legend": true,
+        "colormap": "inferno",
+        "range": [
+          0.0,
+          5.948638916015625
+        ]
+      },
+      {
+        "key": "LYZ",
+        "label": "LYZ expr",
+        "kind": "continuous",
+        "source": "num:LYZ",
+        "legend": true,
+        "colormap": "inferno",
+        "range": [
+          0.0,
+          6.460587501525879
+        ]
+      },
+      {
+        "key": "PPBP",
+        "label": "PPBP expr",
+        "kind": "continuous",
+        "source": "num:PPBP",
+        "legend": true,
+        "colormap": "inferno",
+        "range": [
+          0.0,
+          6.875998497009277
+        ]
+      }
+    ],
+    "filters": [
+      {
+        "key": "cluster",
+        "label": "cluster",
+        "kind": "categorical",
+        "source": "struct:s0"
+      },
+      {
+        "key": "library",
+        "label": "library",
+        "kind": "categorical",
+        "source": "struct:s1"
+      },
+      {
+        "key": "n_genes",
+        "label": "genes detected",
+        "kind": "continuous",
+        "source": "num:n_genes"
+      },
+      {
+        "key": "pct_mt",
+        "label": "% mito",
+        "kind": "continuous",
+        "source": "num:pct_mt"
+      },
+      {
+        "key": "CD3D",
+        "label": "CD3D expr",
+        "kind": "continuous",
+        "source": "num:CD3D"
+      },
+      {
+        "key": "MS4A1",
+        "label": "MS4A1 expr",
+        "kind": "continuous",
+        "source": "num:MS4A1"
+      },
+      {
+        "key": "NKG7",
+        "label": "NKG7 expr",
+        "kind": "continuous",
+        "source": "num:NKG7"
+      },
+      {
+        "key": "LYZ",
+        "label": "LYZ expr",
+        "kind": "continuous",
+        "source": "num:LYZ"
+      },
+      {
+        "key": "PPBP",
+        "label": "PPBP expr",
+        "kind": "continuous",
+        "source": "num:PPBP"
+      }
+    ],
+    "hover": [
+      "cluster",
+      "library",
+      "n_genes"
+    ],
+    "link_template": null,
+    "feature_endpoint": null,
+    "modality": "RNA"
+  }
+}

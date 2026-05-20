@@ -1,0 +1,7 @@
+# build tooling kept internal (it necessarily embeds the strings it strips):
+engine/build_engine.py
+
+__pycache__/
+*.pyc
+*.h5ad
+.DS_Store

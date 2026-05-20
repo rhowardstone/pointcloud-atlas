@@ -1,0 +1,2641 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Atlas</title>
+  <link rel="icon" href="/static/favicon.ico">
+  <style>
+    :root {
+      --bg: #0b0d12;
+      --fg: #e7e8ea;
+      --muted: #6b7280;
+      --accent: #6ea8fe;
+      --panel: #161922;
+      --border: #2a2e3a;
+    }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; margin: 0; padding: 0; background: var(--bg); color: var(--fg); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; }
+    #atlas-canvas { position: fixed; inset: 0; cursor: grab; }
+    body.has-filterbar #atlas-canvas { top: 88px; }
+    body.has-filterbar .legend { bottom: 16px; }
+    body.has-filterbar .filter-banner { top: 100px; }
+    #atlas-canvas:active { cursor: grabbing; }
+    /* Over a dot: regular arrow cursor (not the grab-hand or pointer-finger). */
+    #atlas-canvas.has-hit { cursor: default; }
+    #atlas-canvas.has-hit:active { cursor: default; }
+
+    /* Top bar */
+    .topbar {
+      position: fixed; top: 0; left: 0; right: 0;
+      display: flex; align-items: center; gap: 14px;
+      padding: 10px 16px; background: rgba(11,13,18,0.85);
+      backdrop-filter: blur(8px); border-bottom: 1px solid var(--border);
+      z-index: 10;
+    }
+    /* Filter bar — second row, mirrors /search's filter row but dark themed */
+    .filterbar {
+      position: fixed; top: 50px; left: 0; right: 0;
+      display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+      padding: 6px 16px; background: rgba(11,13,18,0.85);
+      backdrop-filter: blur(8px); border-bottom: 1px solid var(--border);
+      z-index: 9; font-size: 11px;
+    }
+    .filterbar .group { display: flex; align-items: center; gap: 4px; position: relative; }
+    .filterbar select, .filterbar input[type="date"],
+    .filterbar input[type="text"], .filterbar input[type="number"] {
+      background: var(--panel); color: var(--fg);
+      border: 1px solid var(--border); border-radius: 4px;
+      padding: 3px 6px; font: inherit; font-size: 11px; min-height: 26px;
+    }
+    .filterbar input[type="date"] { font-family: ui-monospace, Menlo, monospace; }
+    .filterbar input[type="number"]::-webkit-outer-spin-button,
+    .filterbar input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+    .filterbar input[type="number"] { -moz-appearance: textfield; font-family: ui-monospace, Menlo, monospace; }
+    .filterbar select:focus, .filterbar input:focus { outline: none; border-color: var(--accent); }
+    .filterbar .multi-btn {
+      background: var(--panel); color: var(--fg);
+      border: 1px solid var(--border); border-radius: 4px;
+      padding: 3px 8px; font: inherit; font-size: 11px;
+      cursor: pointer; min-height: 26px;
+    }
+    .filterbar .multi-btn:hover { border-color: var(--accent); }
+    .filterbar .multi-btn.active { color: var(--accent); border-color: var(--accent); }
+    .filterbar .multi-panel {
+      position: absolute; top: 28px; left: 0;
+      background: var(--panel); border: 1px solid var(--border); border-radius: 4px;
+      padding: 6px 10px; min-width: 200px; max-height: 320px; overflow-y: auto;
+      display: none; z-index: 11; box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+    }
+    .filterbar .multi-panel.open { display: block; }
+    .filterbar .multi-panel label {
+      display: flex; align-items: center; gap: 6px; padding: 3px 0;
+      cursor: pointer; color: var(--fg);
+    }
+    .filterbar .multi-panel label:hover { color: var(--accent); }
+    .filterbar .multi-panel input { accent-color: var(--accent); }
+    .filterbar .chk-row label {
+      display: inline-flex; align-items: center; gap: 4px;
+      padding: 3px 8px; cursor: pointer; color: var(--muted);
+      border-radius: 4px;
+    }
+    .filterbar .chk-row label:hover { color: var(--fg); }
+    .filterbar .chk-row input { accent-color: var(--accent); }
+    .filterbar .clear {
+      background: none; border: 1px solid transparent; color: var(--muted);
+      cursor: pointer; padding: 3px 8px; font-size: 11px;
+    }
+    .filterbar .clear:hover { color: var(--accent); border-color: var(--border); }
+    .filterbar .live-count {
+      font-family: ui-monospace, Menlo, monospace; font-size: 11px;
+      color: var(--accent); padding: 3px 8px;
+    }
+    .topbar .title { font-weight: 600; font-size: 14px; letter-spacing: 0.04em; }
+    .topbar .title a { color: var(--fg); text-decoration: none; }
+    .topbar .meta { font-size: 12px; color: var(--muted); }
+    .search { flex: 1; max-width: 420px; position: relative; }
+    .search input {
+      width: 100%; padding: 6px 10px; background: var(--panel); color: var(--fg);
+      border: 1px solid var(--border); border-radius: 6px; font: inherit; font-size: 13px;
+      outline: none;
+    }
+    .search input:focus { border-color: var(--accent); }
+    .search-results {
+      position: absolute; top: 36px; left: 0; right: 0;
+      background: var(--panel); border: 1px solid var(--border); border-radius: 6px;
+      max-height: 320px; overflow-y: auto; display: none; z-index: 20;
+    }
+    .search-results .row {
+      padding: 6px 10px; font-size: 12px; cursor: pointer;
+      border-bottom: 1px solid rgba(42,46,58,0.5);
+    }
+    .search-results .row:hover { background: rgba(110,168,254,0.1); }
+    .search-results .row .id { color: var(--accent); font-family: ui-monospace, Menlo, Consolas, monospace; }
+
+    /* Color-by selector */
+    .controls { display: flex; align-items: center; gap: 10px; }
+    .controls label { font-size: 12px; color: var(--muted); }
+    .controls select {
+      background: var(--panel); color: var(--fg);
+      border: 1px solid var(--border); border-radius: 4px;
+      padding: 4px 8px; font: inherit; font-size: 12px;
+    }
+    .controls button.dim-toggle {
+      background: var(--panel); color: var(--fg);
+      border: 1px solid var(--border); border-radius: 4px;
+      padding: 4px 10px; font: inherit; font-size: 12px;
+      cursor: pointer; font-weight: 500;
+    }
+    .controls button.dim-toggle:hover { border-color: var(--accent); color: var(--accent); }
+    .zoom-indicator {
+      font-family: ui-monospace, Menlo, Consolas, monospace;
+      font-size: 11px; color: var(--muted);
+      padding: 4px 10px; border: 1px solid var(--border); border-radius: 4px;
+      background: var(--panel); min-width: 80px; text-align: center;
+      outline: none;
+    }
+    .zoom-indicator:focus {
+      border-color: var(--accent, #6366f1); color: var(--text);
+    }
+    /* Strip the default <input> appearance — it should look like the old <div> */
+    input.zoom-indicator { appearance: none; -webkit-appearance: none; }
+    /* Help button in topbar — opens an info popover explaining the page */
+    .help-btn {
+      background: var(--panel); color: var(--muted);
+      border: 1px solid var(--border); border-radius: 50%;
+      width: 24px; height: 24px; padding: 0; cursor: pointer;
+      font: inherit; font-size: 13px; font-weight: 600;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .help-btn:hover { color: var(--accent); border-color: var(--accent); }
+    .help-popover {
+      position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+      width: 540px; max-width: calc(100vw - 32px);
+      max-height: calc(100vh - 80px); overflow-y: auto;
+      background: var(--panel); border: 1px solid var(--border);
+      border-radius: 10px; padding: 20px 24px;
+      z-index: 100; box-shadow: 0 12px 40px rgba(0,0,0,0.5);
+      display: none; backdrop-filter: blur(12px);
+    }
+    .help-popover.open { display: block; }
+    .help-popover h2 { font-size: 16px; font-weight: 600; margin: 0 0 8px; color: var(--fg); }
+    .help-popover h3 { font-size: 13px; font-weight: 600; margin: 14px 0 6px; color: var(--accent); text-transform: uppercase; letter-spacing: 0.04em; }
+    .help-popover p, .help-popover li { font-size: 12px; line-height: 1.6; color: var(--fg); margin: 4px 0; }
+    .help-popover ul { padding-left: 18px; margin: 4px 0; }
+    .help-popover code { font-family: ui-monospace, monospace; font-size: 11px; background: rgba(0,0,0,0.3); padding: 1px 4px; border-radius: 3px; color: var(--accent); }
+    .help-popover .kbd {
+      display: inline-block; background: rgba(0,0,0,0.4); border: 1px solid var(--border);
+      border-radius: 3px; padding: 0 5px; margin: 0 1px; font: inherit; font-size: 11px;
+      font-family: ui-monospace, monospace; color: var(--accent); min-width: 16px; text-align: center;
+    }
+    .help-popover .close {
+      position: absolute; top: 12px; right: 14px;
+      background: none; border: none; color: var(--muted);
+      cursor: pointer; font-size: 18px; line-height: 1;
+    }
+    .help-popover .close:hover { color: var(--fg); }
+
+    /* Advanced variant picker — wider grid, scrollable, lots of tiles */
+    .advanced-popover {
+      position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+      width: 880px; max-width: calc(100vw - 32px);
+      max-height: calc(100vh - 80px); overflow-y: auto;
+      background: var(--panel); border: 1px solid var(--border);
+      border-radius: 10px; padding: 18px 22px;
+      z-index: 100; box-shadow: 0 12px 40px rgba(0,0,0,0.5);
+      display: none; backdrop-filter: blur(12px);
+    }
+    .advanced-popover.open { display: block; }
+    .advanced-popover h2 { font-size: 15px; font-weight: 600; margin: 0 0 6px; color: var(--fg); }
+    .advanced-popover .hint { font-size: 11px; color: var(--muted); margin-bottom: 14px; line-height: 1.5; }
+    .advanced-popover .close {
+      position: absolute; top: 12px; right: 14px;
+      background: none; border: none; color: var(--muted);
+      cursor: pointer; font-size: 18px; line-height: 1;
+    }
+    .advanced-popover .close:hover { color: var(--fg); }
+    .advanced-popover .section-title { font-size: 11px; font-weight: 600; color: var(--accent); text-transform: uppercase; letter-spacing: 0.05em; margin: 14px 0 6px; }
+    .variant-grid {
+      display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+      gap: 8px;
+    }
+    .variant-tile {
+      cursor: pointer; padding: 4px; border-radius: 6px;
+      border: 1px solid transparent;
+      transition: border-color 0.1s, background 0.1s;
+      background: rgba(0,0,0,0.2);
+    }
+    .variant-tile:hover { border-color: var(--accent); background: rgba(110,168,254,0.08); }
+    .variant-tile.active { border-color: var(--accent); background: rgba(110,168,254,0.15); }
+    .variant-tile img {
+      width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 4px;
+      display: block;
+    }
+    .variant-tile .vt-label { font-size: 10px; color: var(--fg); margin-top: 4px; line-height: 1.3; font-family: ui-monospace, monospace; }
+    .variant-tile .vt-sub { font-size: 9px; color: var(--muted); }
+    .help-backdrop {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.4);
+      z-index: 99; display: none;
+    }
+    .help-backdrop.open { display: block; }
+
+    /* Hover panel (right side) */
+    .hover-panel {
+      position: fixed; top: 65px; right: 6px; width: 340px;
+      background: rgba(22,25,34,0.95); border: 1px solid var(--border);
+      border-radius: 8px; padding: 12px; display: none;
+      z-index: 8; backdrop-filter: blur(6px);
+      max-height: calc(100vh - 85px); overflow-y: auto;
+    }
+    body.has-filterbar .hover-panel { top: 123px; max-height: calc(100vh - 143px); }
+    .hover-panel .snippet {
+      font-size: 11px; line-height: 1.5; color: #cbd0d8;
+      background: rgba(0,0,0,0.25); padding: 6px 8px; margin: 8px 0;
+      border-left: 2px solid var(--accent);
+      max-height: 90px; overflow-y: auto;
+    }
+    .hover-panel .snippet mark {
+      background: var(--accent); color: #0b0d12; padding: 0 2px;
+      border-radius: 2px; font-weight: 600;
+    }
+    .hover-panel .sender {
+      font-size: 11px; color: var(--muted-light); margin: 2px 0 6px;
+      word-break: break-word;
+    }
+    .hover-panel .sender b { color: var(--fg); }
+    .hover-panel.show { display: block; }
+    .hover-panel.pinned { border-color: var(--accent); }
+    .hover-panel .pin-close {
+      position: absolute; top: 6px; right: 8px;
+      background: none; border: none; color: var(--muted);
+      cursor: pointer; font-size: 16px; line-height: 1; padding: 2px 6px;
+    }
+    .hover-panel .pin-close:hover { color: var(--fg); }
+    .hover-panel.pinned .pin-close { color: var(--accent); }
+    .hover-panel .pin-row-LEGACY {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 4px; font-size: 10px; color: var(--muted);
+      text-transform: uppercase; letter-spacing: 0.06em;
+    }
+    .hover-panel.pinned .pin-row { color: var(--accent); }
+    .hover-panel .pin-close {
+      background: none; border: none; color: var(--muted); cursor: pointer;
+      font-size: 16px; padding: 0 4px; line-height: 1;
+    }
+    .hover-panel .pin-close:hover { color: var(--fg); }
+    .hover-panel .nid {
+      font-family: ui-monospace, Menlo, Consolas, monospace;
+      font-size: 13px; color: var(--accent); margin-bottom: 4px;
+    }
+    .hover-panel .title {
+      font-size: 12px; color: var(--fg); margin: 4px 0 2px; font-weight: 500; line-height: 1.35;
+      overflow: hidden; text-overflow: ellipsis; display: -webkit-box;
+      -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+    }
+    .hover-panel .meta { font-size: 11px; color: var(--muted); margin-bottom: 6px; }
+    .hover-panel .tags { display: flex; flex-wrap: wrap; gap: 3px; margin: 4px 0 8px; }
+    .hover-panel .tags .tag {
+      display: inline-block; font-size: 9.5px; line-height: 1.4;
+      padding: 1px 5px; border-radius: 3px; font-weight: 500;
+      font-variant-numeric: tabular-nums; white-space: nowrap;
+    }
+    .hover-panel .thumb {
+      /* aspect-ratio matches a US-letter PDF page (8.5×11) so the canvas
+         fills the box with zero whitespace. Width is locked to the panel;
+         height is whatever the page aspect dictates. */
+      width: 100%; aspect-ratio: 8.5/11; background: #0f1117;
+      border: 1px solid var(--border); border-radius: 4px;
+      display: flex; align-items: center; justify-content: center;
+      color: var(--muted); font-size: 12px; overflow: hidden; position: relative;
+    }
+    .hover-panel .thumb img { width: 100%; height: 100%; object-fit: cover; object-position: top; }
+    /* Canvas should FILL the thumb box just like the img does — kills the
+       contain-mode dead space when the PDF aspect ≠ box aspect. */
+    .hover-panel .thumb canvas { width: 100%; height: 100%; object-fit: cover; object-position: top; background: white; }
+    .hover-panel .thumb .thumb-fallback {
+      position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+      font-size: 28px; color: var(--muted-light); pointer-events: none;
+    }
+    .hover-panel .neighbors { margin-top: 10px; font-size: 11px; color: var(--muted); }
+    .hover-panel .neighbors b { color: var(--fg); font-weight: 600; }
+    .hover-panel a.open-btn {
+      display: block; margin-top: 10px; padding: 6px 10px;
+      background: var(--accent); color: #0b0d12; text-align: center;
+      text-decoration: none; border-radius: 4px; font-size: 12px; font-weight: 600;
+    }
+
+    /* Legend — 2-column grid, semi-transparent so the constellation behind
+       remains visible. */
+    .legend {
+      position: fixed; bottom: 16px; left: 16px;
+      background: rgba(22,25,34,0.4); border: 1px solid var(--border);
+      border-radius: 6px; padding: 10px 14px; font-size: 11px;
+      backdrop-filter: blur(8px); z-index: 8;
+      display: grid; grid-template-columns: auto auto; column-gap: 16px; row-gap: 2px;
+    }
+    /* "← back to all types" spans both columns */
+    .legend .row.back { grid-column: 1 / -1; }
+    .legend .row { display: flex; align-items: center; gap: 8px; margin: 0; }
+    .legend .swatch { width: 12px; height: 12px; border-radius: 50%; }
+    .legend .row.clickable { cursor: pointer; padding: 2px 4px; margin: 1px -4px; border-radius: 4px; }
+    .legend .row.clickable:hover { background: rgba(110,168,254,0.15); }
+    .legend .row.back { cursor: pointer; color: var(--accent); font-weight: 500; margin: 0 0 6px -4px; padding: 2px 4px; border-radius: 4px; }
+    .legend .row.back:hover { background: rgba(110,168,254,0.15); }
+
+    /* Lasso selection — shift+drag draws an ellipse.
+       SVG is always present so shift+mousedown can land on it; pointer-events
+       is gated by body.lasso-mode (toggled by the Shift key). The ellipse
+       defaults to rx=ry=0 so it's invisible until drawing starts. */
+    #lasso-svg {
+      position: fixed; inset: 0; z-index: 7;
+      pointer-events: none;
+      width: 100vw; height: 100vh;
+    }
+    body.lasso-mode #lasso-svg { pointer-events: auto; }
+    #lasso-ellipse {
+      fill: rgba(110,168,254,0.18); stroke: rgb(110,168,254);
+      stroke-width: 1.5; stroke-dasharray: 4 4;
+      vector-effect: non-scaling-stroke;
+    }
+    body.lasso-mode #atlas-canvas { cursor: crosshair !important; }
+    body.lasso-mode { cursor: crosshair; }
+
+    /* 3D axis gizmo — bottom-left, above the legend. Only shown in 3D.
+       `bottom` is set dynamically in JS to stay flush above whatever the
+       legend's current height is (the legend size changes with color mode
+       and drilldown). */
+    .axis-gizmo {
+      position: fixed; left: 16px; bottom: 150px;
+      width: 70px; height: 70px;
+      pointer-events: none; z-index: 8; display: none;
+      perspective: 260px;
+    }
+    body.is-3d .axis-gizmo { display: block; }
+    .gizmo-frame {
+      position: relative; width: 60px; height: 60px;
+      transform-style: preserve-3d; transition: transform 0.08s linear;
+    }
+    .gizmo-axis {
+      position: absolute; top: 50%; left: 50%;
+      transform-origin: 0 0;
+      font-family: ui-monospace, monospace; font-size: 10px;
+      font-weight: 700; line-height: 1; text-shadow: 0 0 4px rgba(0,0,0,0.9);
+    }
+    .gizmo-axis .bar { display: block; height: 2px; width: 22px; }
+    .gizmo-axis .lbl { position: absolute; left: 24px; top: -6px; }
+    .gizmo-axis.x { transform: translate(0,-1px); }
+    .gizmo-axis.x .bar { background: #ff5252; }  .gizmo-axis.x .lbl { color: #ff5252; }
+    .gizmo-axis.y { transform: rotateZ(-90deg) translate(0,-1px); }
+    .gizmo-axis.y .bar { background: #69f0ae; }  .gizmo-axis.y .lbl { color: #69f0ae; }
+    .gizmo-axis.z { transform: rotateY(-90deg) translate(0,-1px); }
+    .gizmo-axis.z .bar { background: #448aff; }  .gizmo-axis.z .lbl { color: #448aff; }
+
+    /* Tune panel (collapsible, bottom-right) */
+    .tune {
+      position: fixed; bottom: 16px; right: 16px;
+      background: rgba(22,25,34,0.9); border: 1px solid var(--border);
+      border-radius: 6px; padding: 6px 10px; font-size: 11px;
+      backdrop-filter: blur(6px); z-index: 8;
+      max-width: 280px;
+    }
+    .tune summary {
+      cursor: pointer; user-select: none; color: var(--muted);
+      text-transform: uppercase; letter-spacing: 0.05em; font-size: 10px;
+      padding: 2px 0;
+    }
+    .tune[open] summary { color: var(--fg); margin-bottom: 6px; }
+    .tune .field { display: grid; grid-template-columns: 80px 1fr 36px; gap: 6px; align-items: center; margin: 4px 0; }
+    .tune label { color: var(--muted); font-size: 10px; }
+    .tune input[type="range"] { width: 100%; accent-color: var(--accent); }
+    .tune .val { color: var(--accent); font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 10px; text-align: right; }
+    .tune button {
+      margin-top: 6px; padding: 3px 8px; background: var(--panel); color: var(--fg);
+      border: 1px solid var(--border); border-radius: 3px; font: inherit;
+      font-size: 10px; cursor: pointer;
+    }
+    .tune button:hover { border-color: var(--accent); color: var(--accent); }
+
+    /* Loading */
+    .loading {
+      position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+      font-size: 14px; color: var(--muted); z-index: 9;
+      background: rgba(22,25,34,0.9); padding: 16px 24px; border-radius: 8px;
+      border: 1px solid var(--border);
+    }
+    /* Filter banner: shown when atlas is filtered by /search handoff */
+    .filter-banner {
+      position: fixed; top: 50px; left: 50%; transform: translateX(-50%);
+      display: none; align-items: center; gap: 10px; z-index: 9;
+      background: rgba(22,25,34,0.95); border: 1px solid var(--accent);
+      border-radius: 6px; padding: 8px 14px; font-size: 12px;
+      backdrop-filter: blur(6px);
+    }
+    .filter-banner.show { display: flex; }
+    .filter-banner .label { color: var(--fg); }
+    .filter-banner .count { color: var(--accent); font-weight: 600; }
+    .filter-banner .back { color: var(--muted); text-decoration: underline; cursor: pointer; }
+    .filter-banner .back:hover { color: var(--fg); }
+    .filter-banner .close {
+      background: none; border: none; color: var(--muted); cursor: pointer;
+      font-size: 16px; padding: 0 4px; line-height: 1;
+    }
+    .filter-banner .close:hover { color: var(--fg); }
+    /* Constraint pill bar — one removable chip per active search / filter / lasso.
+       Sits just BELOW the 88px filter bar so it never overlaps the controls. */
+    #pill-bar {
+      position: fixed; top: 98px; left: 50%; transform: translateX(-50%);
+      display: none; align-items: center; gap: 6px; z-index: 10;
+      max-width: 92vw; flex-wrap: wrap; justify-content: center;
+    }
+    #pill-bar.show { display: flex; }
+    .pill {
+      display: inline-flex; align-items: center; gap: 6px;
+      background: rgba(22,25,34,0.96); border: 1px solid var(--border-2);
+      border-radius: 999px; padding: 4px 6px 4px 10px; font-size: 12px;
+      color: var(--fg); backdrop-filter: blur(6px); white-space: nowrap;
+    }
+    .pill-search { border-color: var(--accent-fg); }
+    .pill-filter { border-color: var(--good); }
+    .pill-lasso  { border-color: var(--warn); }
+    .pill-glyph { font-size: 13px; line-height: 1; }
+    .pill-label { max-width: 220px; overflow: hidden; text-overflow: ellipsis; }
+    .pill-count { color: var(--muted); font-variant-numeric: tabular-nums; }
+    .pill-x {
+      background: none; border: none; color: var(--muted); cursor: pointer;
+      font-size: 12px; line-height: 1; padding: 2px 4px; border-radius: 999px;
+    }
+    .pill-x:hover { color: var(--fg); background: rgba(255,255,255,0.08); }
+    .pill-clear-all {
+      background: none; border: 1px solid var(--border); color: var(--muted);
+      border-radius: 999px; padding: 4px 12px; font-size: 11px; cursor: pointer;
+    }
+    .pill-clear-all:hover { color: var(--fg); border-color: var(--border-2); }
+    .pill-view-list {
+      background: rgba(110,168,254,0.14); border: 1px solid var(--accent);
+      color: var(--accent); border-radius: 999px; padding: 4px 12px;
+      font-size: 11px; cursor: pointer; white-space: nowrap;
+    }
+    .pill-view-list:hover { background: rgba(110,168,254,0.26); }
+  </style>
+</head>
+<body class="has-filterbar">
+<canvas id="atlas-canvas"></canvas>
+
+<!-- Filter bar — mirrors /search's top filters, drives live atlas subsetting -->
+<div id="filterbar" hidden></div>
+<div class="topbar">
+  <span class="title"></span>
+  <span class="meta" id="meta-counter">loading…</span>
+  <div class="search">
+    <input id="search" type="text" placeholder="Search…" autocomplete="off">
+    <div class="search-results" id="search-results"></div>
+  </div>
+  <div class="controls">
+    <label for="color-by">Color:</label>
+    <select id="color-by">
+      <option value="doc_type_v3" selected>doc type</option>
+      <option value="dataset">dataset</option>
+      <option value="year">year</option>
+    </select>
+    <label for="pos-mode">View:</label>
+    <select id="pos-mode" title="Embedding method / dimensionality">
+      <option value="umap">UMAP (2D)</option>
+      <option value="tsne">tSNE (2D)</option>
+      <option value="pacmap">PaCMAP (2D)</option>
+      <option value="consensus">Consensus (2D)</option>
+      <option value="3d" selected>UMAP (3D)</option>
+      <option value="tsne3d">tSNE (3D)</option>
+      <option value="pacmap3d">PaCMAP (3D)</option>
+      <option value="consensus3d">Consensus (3D)</option>
+    </select>
+    <button class="help-btn" id="reset-view-btn" title="Reset to default view — clear all filters, lassos, camera state" style="font-size:14px;">⟲</button>
+    <button class="help-btn" id="share-btn" title="Copy a shareable link to this exact view (filters + lassos + camera)" style="font-size:14px;">↗</button>
+    <input type="text" class="zoom-indicator" id="zoom-indicator" title="Zoom level (100% = fit-to-data) — type a number + Enter to jump" value="100%" inputmode="numeric" autocomplete="off">
+    <button class="help-btn" id="help-btn" title="About this page">?</button>
+  </div>
+</div>
+
+<!-- Help backdrop + popover -->
+<div class="help-backdrop" id="help-backdrop"></div>
+<div class="help-popover" id="help-popover">
+  <button class="close" id="help-close" aria-label="Close">✕</button>
+  <h2>Atlas</h2>
+  <p><strong>A WebGL projection of <span id="help-doc-count"></span> points.</strong>
+     Points that are more similar in the source embedding tend to land near each other.</p>
+  <p style="color:var(--muted-light); font-size: 11px;">
+    Coordinates have no meaning beyond "closer = more similar" — only local distances are reliable.</p>
+
+  <h3>Navigate</h3>
+  <ul>
+    <li><span class="kbd">◀</span><span class="kbd">▲</span><span class="kbd">▼</span><span class="kbd">▶</span> arrow keys — pan</li>
+    <li><span class="kbd">⇧</span> + <span class="kbd">◀</span><span class="kbd">▶</span><span class="kbd">▲</span><span class="kbd">▼</span> shift+arrows — rotate / tilt (3D only)</li>
+    <li><span class="kbd">+</span> / <span class="kbd">−</span> — zoom in / out</li>
+    <li>scroll wheel — zoom toward cursor</li>
+    <li>left-click drag — orbit (3D) / pan (2D)</li>
+    <li>two-finger touch — orbit on mobile</li>
+    <li>double-click anywhere — fly camera to that point</li>
+  </ul>
+
+  <h3>Interact with documents</h3>
+  <ul>
+    <li>hover a dot — preview metadata + thumbnail in side panel</li>
+    <li>click a dot — pin the preview panel open</li>
+    <li>click empty space — unpin</li>
+    <li>click a different dot while pinned — switch to that doc</li>
+    <li>"Open document →" button — full doc viewer in new tab</li>
+  </ul>
+
+  <h3>Filter the cloud</h3>
+  <p>Use the legend and color-by controls to explore subsets of the points.</p>
+
+  <h3>Switch view</h3>
+  <ul>
+    <li><strong>2D / 3D</strong> button (topbar) — toggle between flat and orbit views</li>
+    <li><strong>Color:</strong> dropdown — color points by any attribute</li>
+    <li><strong>edges</strong> checkbox — overlay the 2.4M relation-graph edges (heavy)</li>
+    <li><strong>render tuning</strong> (bottom-right) — live-adjust dot size, opacity curve, ramp</li>
+  </ul>
+
+  <p style="margin-top: 18px; color: var(--muted-light); font-size: 11px;">
+    Positions come from a dimensionality reduction (UMAP / t-SNE / …) of the source embedding.
+  </p>
+</div>
+
+<div class="hover-panel" id="hover-panel">
+  <button class="pin-close" id="hover-close" title="Close (Esc)" style="display:none">✕</button>
+  <div class="nid" id="hover-nid">—</div>
+  <div class="title" id="hover-title" style="display:none"></div>
+  <div class="meta" id="hover-meta"></div>
+  <div class="tags" id="hover-tags" style="display:none"></div>
+  <div class="sender" id="hover-sender" style="display:none"></div>
+  <div class="snippet" id="hover-snippet" style="display:none"></div>
+  <div class="thumb" id="hover-thumb"><span>thumbnail</span></div>
+  <div class="neighbors" id="hover-neighbors"></div>
+  <a id="hover-open" class="open-btn" target="_blank">Open document →</a>
+</div>
+
+<div class="legend" id="legend"></div>
+
+<details class="tune" id="tune-panel">
+  <summary>Display</summary>
+  <div class="field">
+    <label for="t-rbase">radius</label>
+    <input type="range" id="t-rbase" min="0.1" max="3" step="0.05" value="0.5">
+    <span class="val" id="t-rbase-v">0.50</span>
+  </div>
+  <div class="field">
+    <label for="t-abase">alpha</label>
+    <input type="range" id="t-abase" min="10" max="200" step="2" value="90">
+    <span class="val" id="t-abase-v">90</span>
+  </div>
+  <div class="field">
+    <label for="t-sizebylen">size by doc length</label>
+    <input type="checkbox" id="t-sizebylen" checked>
+  </div>
+  <button id="t-reset">reset</button>
+  <button id="t-copy">copy params</button>
+</details>
+
+<!-- Lasso selection overlay — shift+drag draws an ellipse for graphical filtering -->
+<svg id="lasso-svg" xmlns="http://www.w3.org/2000/svg">
+  <ellipse id="lasso-ellipse" cx="0" cy="0" rx="0" ry="0"></ellipse>
+</svg>
+
+<!-- 3D axis gizmo: bottom-left, above the legend. Rotates with the view. -->
+<div class="axis-gizmo" id="axis-gizmo">
+  <div class="gizmo-frame" id="gizmo-frame">
+    <div class="gizmo-axis x"><span class="bar"></span><span class="lbl">X</span></div>
+    <div class="gizmo-axis y"><span class="bar"></span><span class="lbl">Y</span></div>
+    <div class="gizmo-axis z"><span class="bar"></span><span class="lbl">Z</span></div>
+  </div>
+</div>
+
+<div class="loading" id="loading">Loading atlas…</div>
+
+<!-- Filter banner — populated if user arrived via /search "Map view" handoff -->
+<div class="filter-banner" id="filter-banner">
+  <span class="label" id="filter-label">Filtered from /search:</span>
+  <span class="count" id="filter-count">—</span>
+  <span class="back" id="filter-back" title="Return to /search with these filters">↩ back to list</span>
+  <button class="close" id="filter-close" title="Clear filter">✕</button>
+</div>
+
+<!-- Constraint pill bar — one removable chip per active search / filter / lasso -->
+<div id="pill-bar"></div>
+
+<script src="https://unpkg.com/deck.gl@9.0.30/dist.min.js"></script>
+<script type="module">
+// Renders page 1 of the doc's PDF to a canvas. Falls back to static /thumb/{id}.jpg
+// when justice.gov returns the RollCall 55,285-byte "Page not found" sentinel.
+import * as pdfjsLib from 'https://cdn.jsdelivr.net/npm/pdfjs-dist@4.9.155/build/pdf.min.mjs';
+pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@4.9.155/build/pdf.worker.min.mjs';
+
+const _DS_BOUNDS = [
+  [1,3158,1],[3159,3857,2],[3858,5586,3],[5705,8320,4],
+  [8409,8528,5],[8529,8998,6],[9016,9664,7],[9676,39023,8],
+  [39025,1262781,9],[1262782,2205654,10],[2205655,2730264,11],
+  [2730265,2858497,12]
+];
+window._nodeDataset = function(){ return null; };
+
+// → RollCall CDN) — same-origin, no CORS issues. Hitting justice.gov directly
+// fails because they don't send Access-Control-Allow-Origin headers.
+window._docPdfUrl = function(){ return null; };
+
+// Render page 1 of the PDF at `url` into the given canvas. Returns true on success.
+let _activeRenderToken = 0;
+window._renderPdfThumb = async function(){};
+</script>
+<script>
+const { Deck, OrthographicView, OrbitView, ScatterplotLayer, LineLayer } = window.deck;
+(async function() {
+
+// ─── Color palettes ────────────────────────────────────────────────
+// dataset reads as its own color even against the dark background.
+const DATASET_COLORS = {};
+// Primary doc_type → color. Every named category gets a distinct hue;
+// only `other` (the fallback for unknown primaries) stays grey.
+// plist is folded into "other" since it's a jargon term (Apple property
+// list) that most readers won't recognise.
+const PRIMARY_TYPE_COLORS = {};
+const OTHER_COLOR = [120,120,120];  // catch-all grey for everything not above
+// Alpha applied uniformly to all points so overlapping regions accumulate
+// rather than fully occlude. At 1.3M docs with cluster overlap, opacity is
+// the difference between "useful structure visible" and "grey blob."
+const POINT_ALPHA = 90;       // baseline at fit-zoom; ramped by zoom in buildLayers
+const DIM_ALPHA = 10;         // when search is active, non-matching points
+const HIGHLIGHT_ALPHA = 230;  // when search is active, matching points
+let currentZoomAlpha = POINT_ALPHA;
+let searchMatchSet = null;
+let searchVersion = 0;
+// updateTrigger bucket: only invalidate layer when zoom-alpha bracket actually changes.
+// Continuous trigger would re-render every frame during pan/zoom.
+function zoomAlphaBucket(z) { return Math.round(z * 2) / 2; }
+// Year buckets — discrete palette so the legend actually reads "2010-14: green"
+// instead of a continuous ramp that smears all the years together. Per Rye's
+// audit: undated=20.5%, pre-2000=0%, 2000-04=0.3%, 2005-09=2.8%, 2010-14=44%,
+// 2015-19=31.5%, 2020+=0.9%. The big buckets are 2010-14 + 2015-19 so they
+// get the most distinct hues.
+// 9 year buckets with maximally-distinct, saturated hues — easy to tell
+// apart on the dark atlas background. Order progresses chronologically
+// across the color wheel: white → yellow → green → cyan → blue → purple
+// → magenta → red. Pre-2000 stays white (per Rye) since it's a tiny
+// minority and easy-to-spot on dark.
+const YEAR_BUCKETS = [];
+const YEAR_UNDATED_COLOR = [100,100,100];
+function yearBucketColor(y) {
+  if (!y) return YEAR_UNDATED_COLOR;
+  for (const b of YEAR_BUCKETS) if (y >= b.min && y <= b.max) return b.color;
+  return YEAR_UNDATED_COLOR;
+}
+
+function getColor(d, mode) {
+  let c;
+  if (mode === 'dataset') c = DATASET_COLORS[d.ds] || [180,180,180];
+  else if (mode === 'year') {
+    c = yearBucketColor(d.year || 0);
+  }
+  else if (mode === 'doc_type') {
+    if (typeFilter && subtypeColorMap && subtypeColorMap.primary === typeFilter) {
+      c = subtypeColorMap.map[d.dt] || [180,180,180];
+    } else {
+      // Color by primary type (prefix before first '.'). DOC_TYPE_COLORS used
+      // to key on full doc_type strings ("email.header") — almost everything
+      // missed and fell through to grey. Now we lookup by primary.
+      const primary = (d.dt || '').split('.')[0];
+      c = PRIMARY_TYPE_COLORS[primary] || OTHER_COLOR;
+    }
+  }
+  else if (mode === 'doc_type_v3') {
+    // v3 = same primary-type palette but the SUB-TYPE drilldown is the new
+    // email.personal / email.travel / etc. so colors stay coherent.
+    if (typeFilter && subtypeColorMap && subtypeColorMap.primary === typeFilter) {
+      c = subtypeColorMap.map[d.v3] || [180,180,180];
+    } else {
+      const primary = (d.v3 || '').split('.')[0];
+      c = PRIMARY_TYPE_COLORS[primary] || OTHER_COLOR;
+    }
+  }
+  else c = [180,180,180];
+  // When a filter is active, the layer's `data` array is already filtered to
+  // matches only — so every doc we color here is a match. Use the same alpha
+  // as the unfiltered view so colors/shading/feel stay consistent.
+  const alpha = currentZoomAlpha;
+  return [c[0], c[1], c[2], alpha];
+}
+
+// ─── Data loading ──────────────────────────────────────────────────
+// Binary node struct:  '<ffHHHBB'  → 16 bytes  (x, y, dataset, year, doc_type_code, red_bucket, _)
+// Binary edge struct:  '<IIB'      →  9 bytes  (src_idx, dst_idx, type_code)
+async function loadData() {
+  try {
+    const manifestRes = await fetch('/data/manifest.json?v=v4-fullembed');
+    if (manifestRes.ok) {
+      const manifest = await manifestRes.json();
+      const [posRes, idxRes, pcRes, v3Res] = await Promise.all([
+        fetch('/data/positions.bin?v=v4-fullembed'),
+        fetch('/data/index.txt.gz?v=v4-fullembed'),
+        fetch('/data/page_counts.bin?v=v4-fullembed').catch(() => null),
+        // v3 doc_type sidecar — uint16 per node, indexes manifest.doc_type_vocab_v3
+        fetch('/data/doc_type_codes_v3.bin?v=v4-fullembed').catch(() => null),
+      ]);
+      const posBuf = await posRes.arrayBuffer();
+      const idxBlob = await idxRes.blob();
+      // Parse the page-count sidecar if present; null → "size by doc length" off
+      let pcArr = null;
+      if (pcRes && pcRes.ok) {
+        try { pcArr = new Uint16Array(await pcRes.arrayBuffer()); }
+        catch (e) { console.warn('page_counts.bin parse failed', e); }
+      }
+      // Parse v3 doc_type sidecar (graceful if absent — keeps old atlas working)
+      let v3Arr = null;
+      if (v3Res && v3Res.ok) {
+        try { v3Arr = new Uint16Array(await v3Res.arrayBuffer()); }
+        catch (e) { console.warn('doc_type_codes_v3.bin parse failed', e); }
+      }
+      const V3_VOCAB = manifest.doc_type_vocab_v3 || [];
+      // Decompress gzipped index using DecompressionStream
+      const ds = new DecompressionStream('gzip');
+      const idxStream = idxBlob.stream().pipeThrough(ds);
+      const idxText = await new Response(idxStream).text();
+      const nids = idxText.split('\n');
+      const dv = new DataView(posBuf);
+      const n = manifest.n_nodes;
+      const docs = new Array(n);
+      const TYPE_VOCAB = manifest.doc_type_vocab || [];
+      for (let i = 0; i < n; i++) {
+        const off = i * 16;
+        docs[i] = {
+          nid: nids[i],
+          x: dv.getFloat32(off, true),
+          y: dv.getFloat32(off + 4, true),
+          ds: dv.getUint16(off + 8, true),
+          year: dv.getUint16(off + 10, true),
+          dt: TYPE_VOCAB[dv.getUint16(off + 12, true)] || '',
+          v3: v3Arr ? (V3_VOCAB[v3Arr[i]] || '') : '',
+          r: dv.getUint8(off + 14),  // 0=clean, 1=light, 2=heavy
+          pc: pcArr ? pcArr[i] : 0,   // parent-doc total_pages (0 = unknown)
+        };
+      }
+      // Load edges (lazy if too many — TODO viewport tiling)
+      let edges = [];
+      const edgesRes = await fetch('/data/edges.bin?v=v4-fullembed');
+      if (edgesRes.ok) {
+        const edgeBuf = await edgesRes.arrayBuffer();
+        const edv = new DataView(edgeBuf);
+        const ne = manifest.n_edges;
+        edges = new Array(ne);
+        for (let i = 0; i < ne; i++) {
+          const off = i * 9;
+          edges[i] = { ai: edv.getUint32(off, true), bi: edv.getUint32(off + 4, true), t: edv.getUint8(off + 8) };
+        }
+      }
+      return { docs, edges, manifest };
+    }
+  } catch (e) { console.error('atlas load failed:', e); }
+  // Fallback: 10K random sample (dev mode)
+  const SAMPLE = 10000;
+  const docs = [];
+  for (let i = 0; i < SAMPLE; i++) {
+    docs.push({
+      nid: `NID${String(Math.floor(Math.random()*2900000)).padStart(8,'0')}`,
+      x: (Math.random() - 0.5) * 200,
+      y: (Math.random() - 0.5) * 200,
+      ds: Math.floor(Math.random()*12)+1,
+      year: Math.floor(Math.random()*20)+2000,
+      dt: ['email.header','court.filing','financial.bank_statement','travel.itinerary','image.scan'][Math.floor(Math.random()*5)],
+      r: Math.floor(Math.random()*15),
+    });
+  }
+  return { docs, edges: [] };
+}
+
+// ─── Main ──────────────────────────────────────────────────────────
+const data = await loadData();
+const docs = data.docs || [];
+const edges = data.edges || [];
+
+document.getElementById('loading').style.display = 'none';
+document.getElementById('meta-counter').textContent = `${docs.length.toLocaleString()} docs · ${edges.length.toLocaleString()} edges`;
+
+const nidToIdx = new Map();
+docs.forEach((d, i) => nidToIdx.set(d.nid, i));
+
+let colorMode = 'doc_type_v3';   // default: cleaned-up v3 taxonomy (May 15 2026)
+let showEdges = false;
+let sizeByLen = true;           // "size by doc length" — scale dot radius by parent-doc page count (default ON)
+let typeFilter = '';            // prefix string, e.g. "email", "court". Empty = all types.
+let subtypeColorMap = null;     // populated per typeFilter — maps full doc_type → [r,g,b]
+let activeDataCache = null;     // memoize filter result so deck.gl skips buffer re-upload
+// Start at 2D UMAP for the initial deck construction (positions.bin is already
+// loaded), then setPosMode('3d') runs async after deck init to lazy-load
+// positions_3d.bin and flip to 3D. Setting posMode='3d' here would break the
+// initial render because xyzBuf is null until ensure3DLoaded() fetches it.
+let posMode = 'umap';
+let tsnePositionsLoaded = false;
+let tsne3dPositionsLoaded = false;
+let pacmapPositionsLoaded = false;
+let pacmap3dPositionsLoaded = false;
+let umapTightLoaded = false;
+let umapTight3dLoaded = false;
+let umapGlobalLoaded = false;
+let umapGlobal3dLoaded = false;
+let jointLoaded = false;
+let joint3dLoaded = false;
+let appliedLassos = [];         // DERIVED shadow of `constraints` (lasso records) — kept for URL encode
+let suspendURLWrite = false;    // set during URL restore so writes don't recursively churn
+
+// ─── Constraint stack — the single source of truth for what's selected ──────
+//   search  — singular (a new search replaces the old one).  glyph 🔍
+//   filter  — singular (the whole filter-bar panel collapses to one pill). glyph ▦
+//   lasso   — stacks freely; numbered Lasso 1, Lasso 2 …      glyph ⬭
+// composite selection = intersection of every constraint's matchSet (∩ typeFilter, applied separately).
+// `searchMatchSet` is a DERIVED shadow so the existing read sites + URL encode don't change.
+let constraints = [];
+let lassoSeq = 0;               // running counter for "Lasso N" labels
+let lastSubsetSize = Infinity;  // size of the previous composite — used to decide
+                                // whether a recompute is a "filter further" (zoom)
+                                // or a "widen" (don't yank the camera back out)
+
+function recomputeComposite() {
+  let acc = null;
+  for (const c of constraints) {
+    if (!c.matchSet) continue;
+    if (acc === null) { acc = new Set(c.matchSet); }
+    else { const nx = new Set(); for (const e of acc) if (c.matchSet.has(e)) nx.add(e); acc = nx; }
+  }
+  searchMatchSet = acc;                                                   // null = nothing selected
+  appliedLassos = constraints.filter(c => c.kind === 'lasso').map(c => c.payload);
+  searchVersion++;
+  activeDataCache = null;
+  renderPills();
+  if (typeof deck !== 'undefined' && deck) deck.setProps({layers: buildLayers(currentViewState)});
+  writeStateToURL();
+  // Auto-fit the camera to the selection — but ONLY when it got SMALLER
+  // (filtering further). Removing a constraint widens the set, and we don't
+  // want to yank the camera back out from a selection the user built up.
+  if (typeof docs !== 'undefined' && docs && docs.length) {
+    const sub = currentActiveSubset();
+    if (sub.length && sub.length < lastSubsetSize) animateToSubset(sub);
+    lastSubsetSize = sub.length;
+  }
+}
+// search & filter are singular — replace any existing constraint of that kind.
+function setSingularConstraint(kind, obj) {
+  constraints = constraints.filter(c => c.kind !== kind);
+  if (obj) constraints.push({kind, ...obj});
+}
+function addLassoConstraint(obj) { constraints.push({kind: 'lasso', ...obj}); }
+// When a constraint is dropped, wipe its backing UI inputs too — otherwise the
+// form fields stay populated and writeStateToURL() (which reads them) keeps the
+// stale param in the URL, breaking the "URL == current selection" guarantee.
+function clearConstraintInputs(kind) {
+  if (kind === 'search') {
+    const s = document.getElementById('search');
+    if (s) s.value = '';
+  } else if (kind === 'filter') {
+    if (typeof window._resetFilterInputs === 'function') window._resetFilterInputs();
+  }
+}
+function removeConstraintAt(idx) {
+  const c = constraints[idx];
+  if (c) clearConstraintInputs(c.kind);
+  constraints.splice(idx, 1);
+  recomputeComposite();
+}
+function clearConstraints() {
+  for (const c of constraints) clearConstraintInputs(c.kind);
+  constraints = []; lassoSeq = 0;
+  recomputeComposite();
+}
+
+// Render the pill bar from the constraint stack. Each pill has an ✕ that drops
+// just that constraint; the rest recompose. Empty stack → bar hidden.
+function renderPills() {
+  const bar = document.getElementById('pill-bar');
+  if (!bar) return;
+  bar.innerHTML = '';
+  if (!constraints.length) { bar.classList.remove('show'); return; }
+  const GLYPH = {search: '🔍', filter: '▦', lasso: '⬭'};
+  constraints.forEach((c, i) => {
+    const pill = document.createElement('span');
+    pill.className = 'pill pill-' + c.kind;
+    const n = (c.matchSet ? c.matchSet.size : 0).toLocaleString();
+    pill.innerHTML = '<span class="pill-glyph">' + (GLYPH[c.kind] || '•') + '</span>'
+      + '<span class="pill-label"></span>'
+      + '<span class="pill-count">' + n + '</span>'
+      + '<button class="pill-x" title="Remove this filter">✕</button>';
+    pill.querySelector('.pill-label').textContent = c.label || c.kind;
+    pill.querySelector('.pill-x').addEventListener('click', () => removeConstraintAt(i));
+    bar.appendChild(pill);
+  });
+  const sub = (typeof currentActiveSubset === 'function') ? currentActiveSubset() : [];
+  if (sub.length) {
+    const vl = document.createElement('button');
+    vl.className = 'pill-view-list';
+    vl.textContent = '↗ view ' + sub.length.toLocaleString() + ' in list';
+    vl.title = 'Open this selection in /search';
+    vl.addEventListener('click', () => {
+      const CAP = 100000;
+      const nids = sub.slice(0, CAP).map(d => d.nid);
+      sessionStorage.setItem('atlas_to_search', JSON.stringify({
+        nids,
+        label: 'Atlas selection (' + nids.length.toLocaleString()
+             + (sub.length > CAP ? ' of ' + sub.length.toLocaleString() : '') + ' docs)',
+      }));
+      window.location.href = '/search?from_atlas=1';
+    });
+    bar.appendChild(vl);
+  }
+  // trailing "clear all" when 2+ constraints
+  if (constraints.length > 1) {
+    const clr = document.createElement('button');
+    clr.className = 'pill-clear-all';
+    clr.textContent = 'clear all';
+    clr.addEventListener('click', () => clearConstraints());
+    bar.appendChild(clr);
+  }
+  bar.classList.add('show');
+}
+
+// World-space [x,y,z] for a doc under the ACTIVE posMode. Centralizes the
+// per-mode coordinate selection so the scatterplot, edges, camera-fit and
+// hover all read the same positions. (Lasso replay uses lasso.posMode, which
+// can differ from the active mode, so it keeps its own per-mode logic.)
+// Note: umap-3d has its own x3d/y3d from positions_3d.bin — it does NOT reuse
+// the 2D umap x/y, which are a different projection entirely.
+function nodeXYZ(d) {
+  if (posMode === '3d')               return [d.x3d || 0, d.y3d || 0, d.z || 0];
+  if (posMode === 'tsne3d')           return [d.x_tsne3d || 0, d.y_tsne3d || 0, d.z_tsne3d || 0];
+  if (posMode === 'pacmap3d')         return [d.x_pacmap3d || 0, d.y_pacmap3d || 0, d.z_pacmap3d || 0];
+  if (posMode === 'consensus3d')      return [d.x_cons3d || 0, d.y_cons3d || 0, d.z_cons3d || 0];
+  if (posMode === 'umap_tight_3d')    return [d.x_ut3d || 0, d.y_ut3d || 0, d.z_ut3d || 0];
+  if (posMode === 'umap_global_3d')   return [d.x_ug3d || 0, d.y_ug3d || 0, d.z_ug3d || 0];
+  if (posMode === 'joint3d')          return [d.x_j3d || 0, d.y_j3d || 0, d.z_j3d || 0];
+  if (posMode === 'sweep3d')          return [d.x_sweep || 0, d.y_sweep || 0, d.z_sweep || 0];
+  if (posMode === 'tsne')             return [d.x_tsne || 0, d.y_tsne || 0, 0];
+  if (posMode === 'pacmap')           return [d.x_pacmap || 0, d.y_pacmap || 0, 0];
+  if (posMode === 'consensus')        return [d.x_cons || 0, d.y_cons || 0, 0];
+  if (posMode === 'umap_tight')       return [d.x_ut || 0, d.y_ut || 0, 0];
+  if (posMode === 'umap_global')      return [d.x_ug || 0, d.y_ug || 0, 0];
+  if (posMode === 'joint')            return [d.x_j || 0, d.y_j || 0, 0];
+  if (posMode === 'sweep2d')          return [d.x_sweep || 0, d.y_sweep || 0, 0];
+  return [d.x, d.y, 0];   // umap 2d (default)
+}
+
+function buildLayers(viewState) {
+  // "Galaxy" LOD with live-tunable params. fit-zoom is the inflection point —
+  // formula is anchored at fit so changes to "base"/"mult"/"pow" shift the curve
+  // around what you see when first loading the page.
+  const z = viewState.zoom;
+  const dz = Math.max(0, z - tune.fitAnchor);
+  // Smooth ramp of "effective" rBase from rBase → rBaseMax as you zoom in.
+  // Lets the constellation feel survive at fit, while dots fill in at deep zoom.
+  const rampStart = tune.rampStart, rampEnd = tune.rampEnd;
+  const t = Math.max(0, Math.min(1, (z - rampStart) / Math.max(0.01, rampEnd - rampStart)));
+  const smoothT = t * t * (3 - 2 * t);  // smoothstep
+  const rBaseEff = tune.rBase + (tune.rBaseMax - tune.rBase) * smoothT;
+  const radiusPx = rBaseEff + Math.pow(dz, tune.rPow) * tune.rMult;
+  const zoomAlpha = Math.min(tune.aMax, tune.aBase + dz * tune.aMult);
+  currentZoomAlpha = zoomAlpha;
+  // "Size by doc length": scale each dot's radius by a log of its parent doc's
+  // page count (page counts are wildly skewed — median 1, max ~9800 — so a
+  // linear scale would be useless). pc=1 → 1.0×, pc~17 → ~3.4×, pc~9800 → ~9×.
+  const pcRadius = d => radiusPx * (1 + Math.log2(Math.max(1, d.pc || 1)) * 0.6);
+  // Update zoom indicator (skip while user is editing the field)
+  if (zoomIndicatorEl && document.activeElement !== zoomIndicatorEl) {
+    const pct = Math.pow(2, z - tune.fitAnchor) * 100;
+    zoomIndicatorEl.value = pct >= 1000 ? `${(pct/100).toFixed(1)}×` : `${pct.toFixed(0)}%`;
+  }
+  // Compose the active dataset: doc_type primary filter first, then search match set.
+  // Memoized by (typeFilter, searchVersion) so deck.gl sees a stable data
+  // reference across pan/zoom frames and doesn't re-upload vertex buffers.
+  const cacheKey = (typeFilter || '*') + '|' + searchVersion;
+  let activeData;
+  if (activeDataCache && activeDataCache.key === cacheKey) {
+    activeData = activeDataCache.data;
+  } else {
+    activeData = docs;
+    if (typeFilter) {
+      // Filter by whichever taxonomy field the active color mode uses
+      const field = (colorMode === 'doc_type_v3') ? 'v3' : 'dt';
+      activeData = activeData.filter(d => d[field] && d[field].split('.')[0] === typeFilter);
+    }
+    if (searchMatchSet) activeData = activeData.filter(d => searchMatchSet.has(d.nid));
+    activeDataCache = {key: cacheKey, data: activeData};
+  }
+  const layers = [
+    new ScatterplotLayer({
+      id: 'docs',
+      // When a filter is active, ONLY render the matching docs so the selection
+      // is visually unambiguous (1.29M dimmed dots at any opacity still cover
+      // the canvas). Performance also improves dramatically (e.g. 8K vs 1.3M dots).
+      data: activeData,
+      getPosition: nodeXYZ,
+      getRadius: sizeByLen ? pcRadius : radiusPx,
+      getFillColor: d => getColor(d, colorMode),
+      pickable: true,
+      stroked: false,
+      radiusUnits: 'pixels',
+      radiusMinPixels: 0.4,
+      radiusMaxPixels: 40,
+      // billboard=true in 3D makes dots always face the camera (proper spheres-from-any-angle).
+      // In 2D it's a no-op since the camera is fixed orthographic.
+      // Any 3D posMode → billboard the dots so they face the camera under OrbitView.
+      billboard: ['3d','tsne3d','pacmap3d','consensus3d','umap_tight_3d','umap_global_3d','joint3d','sweep3d'].includes(posMode),
+      updateTriggers: {
+        // alpha tune params must be here or dragging the alpha sliders does
+        // nothing — deck.gl keeps the cached getFillColor output otherwise.
+        getFillColor: [colorMode, typeFilter, searchVersion, zoomAlphaBucket(viewState.zoom),
+                       tune.aBase, tune.aMult, tune.aMax],
+        // when size-by-length is on, getRadius is a per-doc accessor that also
+        // depends on the live radiusPx, so it must re-eval as you zoom.
+        getRadius: [sizeByLen, sizeByLen ? radiusPx : 0],
+        getPosition: [posMode], billboard: [posMode],
+      },
+      onHover: ({object, x, y}) => {
+        // Update cursor: pointer when over a dot, grab on empty space
+        document.getElementById('atlas-canvas').classList.toggle('has-hit', !!object);
+        showHover(object, x, y);
+      },
+      onClick: ({object}) => {
+        if (object) {
+          // Clicked on a dot: pin it (or toggle off if it's the already-pinned one)
+          pinHover(object);
+        } else if (pinnedNid) {
+          // Clicked on empty space while something was pinned → unpin
+          unpinHover();
+        }
+      },
+      // Double-click flies the camera to where the user double-clicked (or to the
+      // dot if they hit one). Standard map-app affordance for "I want to look here."
+      onDblClick: ({coordinate, object}) => {
+        let target;
+        if (object) target = nodeXYZ(object);
+        else if (coordinate) target = viewMode === '3d' ? [coordinate[0], coordinate[1], coordinate[2] || 0] : [coordinate[0], coordinate[1], 0];
+        else return;
+        const newVs = {
+          ...currentViewState,
+          target,
+          zoom: Math.min((currentViewState.zoom || fitZoom) + 2.5, 20),
+          transitionDuration: 600,
+        };
+        deck.setProps({viewState: newVs, layers: buildLayers(newVs)});
+        currentViewState = newVs;
+      },
+    }),
+  ];
+  if (showEdges && edges.length) {
+    layers.unshift(new LineLayer({
+      id: 'edges',
+      data: edges,
+      getSourcePosition: e => { const d = docs[e.ai]; return d ? nodeXYZ(d) : [0,0,0]; },
+      getTargetPosition: e => { const d = docs[e.bi]; return d ? nodeXYZ(d) : [0,0,0]; },
+      updateTriggers: { getSourcePosition: [posMode], getTargetPosition: [posMode] },
+      getColor: [120,120,120,30],
+      getWidth: 0.3,
+      widthUnits: 'common',
+    }));
+  }
+  return layers;
+}
+
+// Compute bounding box of data so the camera fits everything on load.
+// Naive Math.min(...arr) blows the call stack on 1.3M items — use an explicit loop.
+let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+for (const d of docs) {
+  if (d.x < minX) minX = d.x;
+  if (d.x > maxX) maxX = d.x;
+  if (d.y < minY) minY = d.y;
+  if (d.y > maxY) maxY = d.y;
+}
+const cx = (minX + maxX) / 2, cy = (minY + maxY) / 2;
+const dataW = maxX - minX, dataH = maxY - minY;
+// deck.gl OrthographicView: at zoom=k, 1 data unit = 2^k screen pixels.
+// We want 85% of viewport filled with data → compute zoom to fit larger dimension.
+const vpW = window.innerWidth * 0.85;
+const vpH = (window.innerHeight - 60) * 0.85;  // -60 for topbar
+const fitZoom = Math.min(
+  Math.log2(vpW / Math.max(1, dataW)),
+  Math.log2(vpH / Math.max(1, dataH))
+);
+// Max zoom is effectively unbounded — bumped to 20 so individual dots stay readable
+// even at 100,000× linear zoom.
+const initialViewState = { target: [cx, cy, 0], zoom: fitZoom, minZoom: fitZoom - 1.5, maxZoom: 24 };
+// Default starting zoom is 90% of fit-to-data (slightly zoomed out). Applied
+// via deck.setProps after init so initialViewState stays simple for safety.
+const DEFAULT_START_ZOOM_PCT = 90;
+
+// Live-tunable render params — wired to the bottom-right slider panel.
+// fitAnchor is the zoom level the formula counts as "zero"; defaults to the computed fit zoom.
+// These defaults were eyeballed by Rye via the slider panel — keep them.
+const TUNE_DEFAULTS = {
+  // Radius growth: dots stay tiny at fit (so the constellation reads as
+  // structure) but grow generously as the user zooms in past the ramp,
+  // so individual docs are big enough to click + read at deep zoom.
+  // At fit+10 ≈ 11px; at fit+20 ≈ 22px; at fit+24 (maxZoom) ≈ 28px.
+  rBase: 0.5, rMult: 0.1, rPow: 1.25,
+  rBaseMax: 4.0,             // effective rBase at fully-zoomed-in
+  rampStart: fitZoom + 5,     // zoom level where rBase begins ramping up
+  rampEnd: fitZoom + 20,      // zoom level where rBase reaches rBaseMax
+  aBase: 90, aMult: 7, aMax: 140,
+};
+const tune = { ...TUNE_DEFAULTS, fitAnchor: fitZoom };
+// viewMode starts '2d' so OrthographicView is the initial view; setPosMode('3d')
+// after init swaps to OrbitView (3D). See bottom of file for the init transition.
+let viewMode = '2d';
+let xyzBuf = null;     // lazy-loaded 3D positions
+let zoomIndicatorEl = null;
+
+function bindSlider(id, key) {
+  const inp = document.getElementById(id);
+  const val = document.getElementById(id + '-v');
+  inp.addEventListener('input', () => {
+    tune[key] = parseFloat(inp.value);
+    val.textContent = (key === 'aBase' || key === 'aMult' || key === 'aMax')
+      ? Math.round(tune[key])
+      : tune[key].toFixed(2);
+    deck.setProps({layers: buildLayers(currentViewState)});
+  });
+}
+// (syncRampSliders removed — ramp start/end no longer exposed in the UI.)
+// Display panel: only two user-tweakable knobs (radius + alpha). The other
+// TUNE constants (rBaseMax/rMult/rPow/rampStart/rampEnd/aMult/aMax) keep
+// their defaults and drive the formula but aren't exposed in the UI.
+setTimeout(() => {
+  bindSlider('t-rbase', 'rBase');
+  bindSlider('t-abase', 'aBase');
+  document.getElementById('t-sizebylen').addEventListener('change', e => {
+    sizeByLen = e.target.checked;
+    deck.setProps({layers: buildLayers(currentViewState)});
+  });
+  document.getElementById('t-reset').onclick = () => {
+    Object.assign(tune, TUNE_DEFAULTS);
+    for (const [k, sliderId] of [['rBase','t-rbase'], ['aBase','t-abase']]) {
+      const inp = document.getElementById(sliderId);
+      const valEl = document.getElementById(sliderId + '-v');
+      if (inp) {
+        inp.value = TUNE_DEFAULTS[k];
+        valEl.textContent = k.startsWith('a') ? String(TUNE_DEFAULTS[k]) : TUNE_DEFAULTS[k].toFixed(2);
+      }
+    }
+    sizeByLen = true;
+    document.getElementById('t-sizebylen').checked = true;
+    deck.setProps({layers: buildLayers(currentViewState)});
+  };
+  document.getElementById('t-copy').onclick = () => {
+    const txt = `const TUNE = ${JSON.stringify(tune, null, 2)};`;
+    navigator.clipboard.writeText(txt).then(() => {
+      const btn = document.getElementById('t-copy');
+      const orig = btn.textContent;
+      btn.textContent = 'copied!';
+      setTimeout(() => btn.textContent = orig, 1500);
+    });
+  };
+}, 0);
+
+// Track current viewState ourselves — deck.gl doesn't expose `deck.viewState` publicly,
+// so we mirror it from onViewStateChange. Slider handlers need this to rebuild layers
+// at the CURRENT zoom (not the initial fit zoom).
+let currentViewState = initialViewState;
+let cameraURLDebounce = null;   // debounce URL writes while panning/zooming
+zoomIndicatorEl = document.getElementById('zoom-indicator');
+
+// Editable zoom: user types a number (% or N×) + Enter → jump camera there.
+// Empty input → reset to fit (100%). Invalid input bounces back to current zoom.
+if (zoomIndicatorEl) {
+  zoomIndicatorEl.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    const raw = zoomIndicatorEl.value.trim();
+    // Accept "150", "150%", "2.5x", "2.5×"
+    let pct = null;
+    const mPct  = raw.match(/^(\d+(?:\.\d+)?)\s*%?\s*$/);
+    const mMult = raw.match(/^(\d+(?:\.\d+)?)\s*[x×]\s*$/i);
+    if (mMult) pct = parseFloat(mMult[1]) * 100;
+    else if (mPct) pct = parseFloat(mPct[1]);
+    if (!pct || pct <= 0) {
+      // Invalid → restore display from current zoom
+      const cz = (currentViewState && currentViewState.zoom != null) ? currentViewState.zoom : tune.fitAnchor;
+      const cp = Math.pow(2, cz - tune.fitAnchor) * 100;
+      zoomIndicatorEl.value = cp >= 1000 ? `${(cp/100).toFixed(1)}×` : `${cp.toFixed(0)}%`;
+      zoomIndicatorEl.blur();
+      return;
+    }
+    const newZoom = Math.log2(pct / 100) + tune.fitAnchor;
+    // Clamp to view's zoom bounds (minZoom/maxZoom)
+    const clamped = Math.max(currentViewState.minZoom ?? -10, Math.min(currentViewState.maxZoom ?? 24, newZoom));
+    deck.setProps({
+      viewState: {...currentViewState, zoom: clamped},
+      layers: buildLayers({...currentViewState, zoom: clamped}),
+    });
+    zoomIndicatorEl.blur();
+  });
+  zoomIndicatorEl.addEventListener('focus', () => zoomIndicatorEl.select());
+}
+
+function makeView() {
+  // keyboard: arrows pan; shift+arrows rotate (3D only); +/- zoom. dragPan + dragRotate
+  // give right-click pan + left-click rotate. touchRotate enables two-finger rotate.
+  return viewMode === '3d'
+    ? new OrbitView({ controller: {scrollZoom: {smooth: true}, dragRotate: true, touchRotate: true, keyboard: false} })
+    : new OrthographicView({ controller: {scrollZoom: {smooth: true}, keyboard: false} });
+}
+
+const deck = new Deck({
+  canvas: 'atlas-canvas',
+  views: makeView(),
+  initialViewState,
+  // Tiny dots are hard to hit with the default 1px pickingRadius; bump it so
+  // the dot under the cursor reliably registers (which also lets has-hit
+  // apply, switching cursor away from the grab-hand).
+  pickingRadius: 6,
+  layers: buildLayers(initialViewState),
+  onViewStateChange: ({viewState}) => {
+    // Controlled mode: we own viewState and must push it back so the camera
+    // actually moves. setPosMode also passes viewState via setProps to jump
+    // camera between embeddings, which makes deck.gl permanently controlled —
+    // so push-back from here is required, not optional.
+    currentViewState = viewState;
+    updateAxisGizmo(viewState);
+    deck.setProps({viewState, layers: buildLayers(viewState)});
+    // Keep the URL's camera (v=) in sync so a copied link reproduces the view.
+    // Debounced — pan/zoom fire this every frame.
+    clearTimeout(cameraURLDebounce);
+    cameraURLDebounce = setTimeout(writeStateToURL, 250);
+  },
+});
+
+// ─── Custom keyboard panning ─────────────────────────────────────────
+// deck.gl's built-in arrow-key pan worked in world coords, so in 3D mode
+// pressing Left would pan along world +X regardless of which direction the
+// camera was facing. We disable it and roll our own using screen-aligned
+// directions sampled from the active viewport — so arrows always move
+// relative to "what you see right now."
+// Sign convention: ArrowUp/Right = positive screen-axis motion.
+document.addEventListener('keydown', e => {
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT') return;
+  if (e.metaKey || e.ctrlKey || e.altKey) return;
+  let dx = 0, dy = 0;
+  if      (e.key === 'ArrowLeft')  dx = -1;
+  else if (e.key === 'ArrowRight') dx = +1;
+  else if (e.key === 'ArrowUp')    dy = +1;   // screen-up
+  else if (e.key === 'ArrowDown')  dy = -1;
+  else return;
+  e.preventDefault();
+
+  const stepPx = Math.max(window.innerWidth, window.innerHeight) * 0.06;
+
+  // Shift+Arrow in 3D: orbit / tilt rather than pan
+  if (posMode === '3d' && e.shiftKey) {
+    const nextRX = (currentViewState.rotationX || 0) + dy * 8;
+    const nextRO = (currentViewState.rotationOrbit || 0) + dx * 8;
+    currentViewState = {
+      ...currentViewState,
+      rotationX: Math.max(-89, Math.min(89, nextRX)),
+      rotationOrbit: nextRO,
+      transitionDuration: 0,
+    };
+    deck.setProps({viewState: currentViewState, layers: buildLayers(currentViewState)});
+    return;
+  }
+
+  // Pan: derive world-space "one pixel right" and "one pixel up" vectors
+  // from the active viewport. unproject(screen) → world, so the diff gives
+  // the screen-aligned world direction at the current camera pose.
+  const vps = deck.getViewports ? deck.getViewports() : [];
+  const vp = vps && vps[0];
+  const t = currentViewState.target || [0, 0, 0];
+  let panX = 0, panY = 0, panZ = 0;
+  if (vp) {
+    const w = window.innerWidth, h = window.innerHeight;
+    const cx = w / 2, cy = h / 2;
+    const center = vp.unproject([cx, cy]);
+    const right  = vp.unproject([cx + 1, cy]);
+    const up     = vp.unproject([cx, cy - 1]);   // screen-up is canvas-y minus
+    // World vector per screen pixel
+    const rx = right[0] - center[0], ry = right[1] - center[1], rz = (right[2] || 0) - (center[2] || 0);
+    const ux = up[0] - center[0],    uy = up[1] - center[1],    uz = (up[2] || 0)    - (center[2] || 0);
+    panX = (dx * rx + dy * ux) * stepPx;
+    panY = (dx * ry + dy * uy) * stepPx;
+    panZ = (dx * rz + dy * uz) * stepPx;
+  } else {
+    // Fallback when viewport isn't ready: use world axes scaled by zoom.
+    const worldPerPx = 1 / Math.pow(2, currentViewState.zoom || 0);
+    panX = dx * stepPx * worldPerPx;
+    panY = -dy * stepPx * worldPerPx;   // screen-Y is canvas-Y-positive-down
+  }
+  currentViewState = {
+    ...currentViewState,
+    target: [t[0] + panX, t[1] + panY, (t[2] || 0) + panZ],
+    transitionDuration: 0,
+  };
+  deck.setProps({viewState: currentViewState, layers: buildLayers(currentViewState)});
+});
+
+// Lazy-load 3D positions on first 3D toggle, then attach z coord to each doc.
+async function ensure3DLoaded() {
+  if (xyzBuf) return;
+  // Cacheable — positions_3d.bin is stable across builds (each build bumps the
+  // versioned key). The old ?cb=Date.now() forced a 16MB redownload on every
+  // page load, which made the initial 3D auto-flip feel laggy. Version key
+  // matches manifest.json so deploys still cache-bust.
+  const res = await fetch('/data/positions_3d.bin?v=v4-fullembed');
+  const buf = await res.arrayBuffer();
+  xyzBuf = new Float32Array(buf);
+  // positions_3d.bin is its OWN <fff> embedding — x3d/y3d are NOT the 2D umap
+  // x/y. Keep all three so the 3D view is a coherent projection.
+  for (let i = 0; i < docs.length; i++) {
+    docs[i].x3d = xyzBuf[i*3];
+    docs[i].y3d = xyzBuf[i*3 + 1];
+    docs[i].z   = xyzBuf[i*3 + 2];
+  }
+}
+
+// Lazy-load tSNE 2D positions; stash them on each doc as x_tsne/y_tsne so
+// getPosition can switch sources via posMode without re-fetching.
+async function ensureTsneLoaded() {
+  if (tsnePositionsLoaded) return;
+  const res = await fetch('/data/positions_tsne.bin?v=20260516b');
+  const buf = await res.arrayBuffer();
+  const fa = new Float32Array(buf);
+  for (let i = 0; i < docs.length; i++) {
+    docs[i].x_tsne = fa[i*2];
+    docs[i].y_tsne = fa[i*2 + 1];
+  }
+  tsnePositionsLoaded = true;
+}
+
+async function ensureTsne3dLoaded() {
+  if (tsne3dPositionsLoaded) return;
+  const res = await fetch('/data/positions_tsne_3d.bin?v=20260516a');
+  if (!res.ok) { console.warn('tsne 3d positions missing'); return; }
+  const buf = await res.arrayBuffer();
+  const fa = new Float32Array(buf);
+  for (let i = 0; i < docs.length; i++) {
+    docs[i].x_tsne3d = fa[i*3];
+    docs[i].y_tsne3d = fa[i*3 + 1];
+    docs[i].z_tsne3d = fa[i*3 + 2];
+  }
+  tsne3dPositionsLoaded = true;
+}
+
+async function ensurePacmapLoaded() {
+  if (pacmapPositionsLoaded) return;
+  const res = await fetch('/data/positions_pacmap.bin?v=20260516a');
+  if (!res.ok) { console.warn('pacmap positions missing'); return; }
+  const buf = await res.arrayBuffer();
+  const fa = new Float32Array(buf);
+  for (let i = 0; i < docs.length; i++) {
+    docs[i].x_pacmap = fa[i*2];
+    docs[i].y_pacmap = fa[i*2 + 1];
+  }
+  pacmapPositionsLoaded = true;
+}
+
+async function ensurePacmap3dLoaded() {
+  if (pacmap3dPositionsLoaded) return;
+  const res = await fetch('/data/positions_pacmap_3d.bin?v=20260516a');
+  if (!res.ok) { console.warn('pacmap 3d positions missing'); return; }
+  const buf = await res.arrayBuffer();
+  const fa = new Float32Array(buf);
+  for (let i = 0; i < docs.length; i++) {
+    docs[i].x_pacmap3d = fa[i*3];
+    docs[i].y_pacmap3d = fa[i*3 + 1];
+    docs[i].z_pacmap3d = fa[i*3 + 2];
+  }
+  pacmap3dPositionsLoaded = true;
+}
+
+let consensusLoaded = false, consensus3dLoaded = false;
+async function ensureConsensusLoaded() {
+  if (consensusLoaded) return;
+  const res = await fetch('/data/positions_consensus.bin?v=20260516a');
+  if (!res.ok) { console.warn('consensus 2D positions missing'); return; }
+  const buf = await res.arrayBuffer();
+  const fa = new Float32Array(buf);
+  for (let i = 0; i < docs.length; i++) {
+    docs[i].x_cons = fa[i*2];
+    docs[i].y_cons = fa[i*2 + 1];
+  }
+  consensusLoaded = true;
+}
+async function ensureConsensus3dLoaded() {
+  if (consensus3dLoaded) return;
+  const res = await fetch('/data/positions_consensus_3d.bin?v=20260516a');
+  if (!res.ok) { console.warn('consensus 3D positions missing'); return; }
+  const buf = await res.arrayBuffer();
+  const fa = new Float32Array(buf);
+  for (let i = 0; i < docs.length; i++) {
+    docs[i].x_cons3d = fa[i*3];
+    docs[i].y_cons3d = fa[i*3 + 1];
+    docs[i].z_cons3d = fa[i*3 + 2];
+  }
+  consensus3dLoaded = true;
+}
+
+async function ensureUmapTightLoaded() {
+  if (umapTightLoaded) return;
+  const res = await fetch('/data/positions_umap_tight.bin');
+  if (!res.ok) { console.warn('umap-tight positions missing'); return; }
+  const buf = await res.arrayBuffer();
+  const fa = new Float32Array(buf);
+  for (let i = 0; i < docs.length; i++) {
+    docs[i].x_ut = fa[i*2];
+    docs[i].y_ut = fa[i*2 + 1];
+  }
+  umapTightLoaded = true;
+}
+
+async function ensureUmapTight3dLoaded() {
+  if (umapTight3dLoaded) return;
+  const res = await fetch('/data/positions_umap_tight_3d.bin');
+  if (!res.ok) { console.warn('umap-tight 3d positions missing'); return; }
+  const buf = await res.arrayBuffer();
+  const fa = new Float32Array(buf);
+  for (let i = 0; i < docs.length; i++) {
+    docs[i].x_ut3d = fa[i*3];
+    docs[i].y_ut3d = fa[i*3 + 1];
+    docs[i].z_ut3d = fa[i*3 + 2];
+  }
+  umapTight3dLoaded = true;
+}
+
+async function ensureUmapGlobalLoaded() {
+  if (umapGlobalLoaded) return;
+  const res = await fetch('/data/positions_umap_global.bin');
+  if (!res.ok) { console.warn('umap-global positions missing'); return; }
+  const buf = await res.arrayBuffer();
+  const fa = new Float32Array(buf);
+  for (let i = 0; i < docs.length; i++) {
+    docs[i].x_ug = fa[i*2];
+    docs[i].y_ug = fa[i*2 + 1];
+  }
+  umapGlobalLoaded = true;
+}
+
+async function ensureUmapGlobal3dLoaded() {
+  if (umapGlobal3dLoaded) return;
+  const res = await fetch('/data/positions_umap_global_3d.bin');
+  if (!res.ok) { console.warn('umap-global 3d positions missing'); return; }
+  const buf = await res.arrayBuffer();
+  const fa = new Float32Array(buf);
+  for (let i = 0; i < docs.length; i++) {
+    docs[i].x_ug3d = fa[i*3];
+    docs[i].y_ug3d = fa[i*3 + 1];
+    docs[i].z_ug3d = fa[i*3 + 2];
+  }
+  umapGlobal3dLoaded = true;
+}
+
+async function ensureJointLoaded() {
+  if (jointLoaded) return;
+  const res = await fetch('/data/positions_joint.bin');
+  if (!res.ok) { console.warn('joint positions missing'); return; }
+  const buf = await res.arrayBuffer();
+  const fa = new Float32Array(buf);
+  for (let i = 0; i < docs.length; i++) {
+    docs[i].x_j = fa[i*2];
+    docs[i].y_j = fa[i*2 + 1];
+  }
+  jointLoaded = true;
+}
+
+async function ensureJoint3dLoaded() {
+  if (joint3dLoaded) return;
+  const res = await fetch('/data/positions_joint_3d.bin');
+  if (!res.ok) { console.warn('joint 3d positions missing'); return; }
+  const buf = await res.arrayBuffer();
+  const fa = new Float32Array(buf);
+  for (let i = 0; i < docs.length; i++) {
+    docs[i].x_j3d = fa[i*3];
+    docs[i].y_j3d = fa[i*3 + 1];
+    docs[i].z_j3d = fa[i*3 + 2];
+  }
+  joint3dLoaded = true;
+}
+
+// Compute fit-to-data viewState for whichever positions are currently active.
+// Fit the camera to a subset of docs, using the active embedding's coords.
+// Returns a viewState (or null if subset empty). 20% padding by default so
+// matches don't touch the canvas edges.
+function fitToSubset(subset, opts) {
+  opts = opts || {};
+  const padFrac = opts.pad != null ? opts.pad : 0.2;
+  if (!subset || !subset.length) return null;
+
+  // Any 3D posMode — nodeXYZ() already routes to the right coordinate set.
+  // Reuse the same canonical THREE_D_MODES list used by lasso build/test.
+  if (THREE_D_MODES.includes(posMode)) {
+    // 3D: compute bbox in all 3 axes, then use the largest span as a sphere
+    // radius so the subset is fully framed regardless of camera angle.
+    let lo_x = Infinity, hi_x = -Infinity, lo_y = Infinity, hi_y = -Infinity, lo_z = Infinity, hi_z = -Infinity;
+    for (const d of subset) {
+      const [px, py, pz] = nodeXYZ(d);
+      if (px < lo_x) lo_x = px; if (px > hi_x) hi_x = px;
+      if (py < lo_y) lo_y = py; if (py > hi_y) hi_y = py;
+      if (pz < lo_z) lo_z = pz; if (pz > hi_z) hi_z = pz;
+    }
+    const cx = (lo_x + hi_x) / 2, cy = (lo_y + hi_y) / 2, cz = (lo_z + hi_z) / 2;
+    const maxSpan = Math.max(0.5, (1 + padFrac) * Math.max(hi_x - lo_x, hi_y - lo_y, hi_z - lo_z));
+    // OrbitView's zoom is log2(scale). For a sphere of diameter `maxSpan` to
+    // fit in the smaller viewport dimension: viewport_min = maxSpan * 2^zoom
+    const viewportMin = Math.min(window.innerWidth, window.innerHeight);
+    const zoom = Math.min(20, Math.log2(viewportMin / maxSpan));
+    return {
+      ...currentViewState,
+      target: [cx, cy, cz],
+      zoom,
+      transitionDuration: opts.duration != null ? opts.duration : 600,
+    };
+  }
+
+  // 2D path (UMAP / tSNE / PaCMAP / consensus / sweep2d) — accessor must match
+  // the active posMode, or the lasso/fit math runs against UMAP coords while
+  // dots are drawn elsewhere.
+  const getX = posMode === 'tsne'         ? (d => d.x_tsne)
+             : posMode === 'pacmap'       ? (d => d.x_pacmap)
+             : posMode === 'consensus'    ? (d => d.x_cons)
+             : posMode === 'umap_tight'   ? (d => d.x_ut)
+             : posMode === 'umap_global'  ? (d => d.x_ug)
+             : posMode === 'joint'        ? (d => d.x_j)
+             : posMode === 'sweep2d'      ? (d => d.x_sweep)
+             : (d => d.x);
+  const getY = posMode === 'tsne'         ? (d => d.y_tsne)
+             : posMode === 'pacmap'       ? (d => d.y_pacmap)
+             : posMode === 'consensus'    ? (d => d.y_cons)
+             : posMode === 'umap_tight'   ? (d => d.y_ut)
+             : posMode === 'umap_global'  ? (d => d.y_ug)
+             : posMode === 'joint'        ? (d => d.y_j)
+             : posMode === 'sweep2d'      ? (d => d.y_sweep)
+             : (d => d.y);
+  let lo_x = Infinity, hi_x = -Infinity, lo_y = Infinity, hi_y = -Infinity;
+  for (const d of subset) {
+    const x = getX(d), y = getY(d);
+    if (x < lo_x) lo_x = x; if (x > hi_x) hi_x = x;
+    if (y < lo_y) lo_y = y; if (y > hi_y) hi_y = y;
+  }
+  const cx = (lo_x + hi_x) / 2, cy = (lo_y + hi_y) / 2;
+  const spanX = Math.max(0.5, (hi_x - lo_x) * (1 + padFrac));
+  const spanY = Math.max(0.5, (hi_y - lo_y) * (1 + padFrac));
+  const zoom = Math.min(20, Math.log2(Math.min(window.innerWidth / spanX, window.innerHeight / spanY)) + 0.2);
+  return {
+    ...currentViewState,
+    target: [cx, cy, 0],
+    zoom,
+    transitionDuration: opts.duration != null ? opts.duration : 600,
+  };
+}
+
+// Animate the camera to fit the given subset. Caller hands in pre-filtered docs.
+function animateToSubset(subset, opts) {
+  const vs = fitToSubset(subset, opts);
+  if (!vs) return;
+  currentViewState = vs;
+  deck.setProps({viewState: vs, layers: buildLayers(vs)});
+}
+
+// Compute the current active subset using the same logic as buildLayers so
+// callers don't have to duplicate the typeFilter + searchMatchSet filtering.
+function currentActiveSubset() {
+  let arr = docs;
+  if (typeFilter) {
+    const field = (colorMode === 'doc_type_v3') ? 'v3' : 'dt';
+    arr = arr.filter(d => d[field] && d[field].split('.')[0] === typeFilter);
+  }
+  if (searchMatchSet) arr = arr.filter(d => searchMatchSet.has(d.nid));
+  return arr;
+}
+
+// ─── Shareable lasso state ───────────────────────────────────────────
+// Each lasso is recorded in a way that replays correctly regardless of camera:
+//  - 2D modes (umap, tsne): the ellipse is captured in WORLD coords. Replay
+//    just tests each dot's world position against the world ellipse.
+//  - 3D mode: the ellipse is captured in SCREEN coords PLUS the camera pose
+//    (target xyz, zoom, rotationX, rotationOrbit) at lasso time. Replay sets
+//    the camera, then runs the same screen-space test against projected dots.
+const THREE_D_MODES = ['3d','tsne3d','pacmap3d','consensus3d','umap_tight_3d','umap_global_3d','joint3d','sweep3d'];
+function buildLassoRecord(vp, cxS, cyS, rxS, ryS) {
+  const canvasRect = document.getElementById('atlas-canvas').getBoundingClientRect();
+  // Convert client-coord ellipse (top-left includes canvasRect offset) → canvas coords
+  const ccx = cxS - canvasRect.left, ccy = cyS - canvasRect.top;
+  if (THREE_D_MODES.includes(posMode)) {
+    return {
+      v: 1, posMode,
+      screen: {cx: ccx, cy: ccy, rx: rxS, ry: ryS, w: canvasRect.width, h: canvasRect.height},
+      cam: {
+        tx: currentViewState.target[0], ty: currentViewState.target[1],
+        tz: currentViewState.target[2] || 0, zoom: currentViewState.zoom,
+        rx: currentViewState.rotationX || 0, ro: currentViewState.rotationOrbit || 0,
+      },
+    };
+  }
+  // 2D: unproject the 4 boundary points to get world-space ellipse
+  const center = vp.unproject([ccx, ccy]);
+  const left   = vp.unproject([ccx - rxS, ccy]);
+  const right  = vp.unproject([ccx + rxS, ccy]);
+  const top    = vp.unproject([ccx, ccy - ryS]);
+  const bottom = vp.unproject([ccx, ccy + ryS]);
+  return {
+    v: 1, posMode,
+    world: {
+      cx: center[0], cy: center[1],
+      rx: Math.abs(right[0] - left[0]) / 2,
+      ry: Math.abs(bottom[1] - top[1]) / 2,
+    },
+  };
+}
+
+// that fall inside the ellipse. A lasso is a standalone constraint — the
+// constraint-stack intersection handles composing it with everything else,
+// so this tests against the full `docs` pool (not the composite subset) and
+// does NOT mutate searchMatchSet. Called both interactively and when
+// replaying lassos from a shared URL.
+function computeLassoMatches(lasso) {
+  const pool = docs;
+  const matches = new Set();
+
+  if (lasso.world) {
+    // 2D world-space ellipse — pure math, no viewport needed (so this works
+    // during URL restore before deck.gl has its first frame).
+    const {cx, cy, rx, ry} = lasso.world;
+    const rx2 = rx * rx, ry2 = ry * ry;
+    const m = lasso.posMode;
+    const getX = m === 'tsne' ? d => d.x_tsne : m === 'pacmap' ? d => d.x_pacmap
+               : m === 'consensus' ? d => d.x_cons
+               : m === 'sweep2d' ? d => d.x_sweep : d => d.x;
+    const getY = m === 'tsne' ? d => d.y_tsne : m === 'pacmap' ? d => d.y_pacmap
+               : m === 'consensus' ? d => d.y_cons
+               : m === 'sweep2d' ? d => d.y_sweep : d => d.y;
+    for (const d of pool) {
+      const dx = getX(d) - cx, dy = getY(d) - cy;
+      if (dx*dx / rx2 + dy*dy / ry2 <= 1) matches.add(d.nid);
+    }
+  } else if (lasso.screen && lasso.cam) {
+    // 3D screen-space ellipse. Reconstruct the EXACT viewport the lasso was
+    // drawn in — its own recorded width/height + camera pose — and project
+    // through THAT. This makes the selection independent of the current
+    // window size, so a 3D-lasso link restores correctly in any browser.
+    const c = lasso.cam, s = lasso.screen;
+    let vp;
+    try {
+      vp = new OrbitView({}).makeViewport({
+        width: s.w, height: s.h,
+        viewState: {
+          target: [c.tx, c.ty, c.tz], zoom: c.zoom,
+          rotationX: c.rx, rotationOrbit: c.ro,
+        },
+      });
+    } catch (e) { console.warn('lasso viewport rebuild failed', e); return matches; }
+    const {cx, cy, rx, ry} = s;
+    const rx2 = rx * rx, ry2 = ry * ry;
+    // Project the coords for the lasso's OWN posMode — a tsne3d/pacmap3d lasso
+    // must test those positions, not the UMAP x/y/z.
+    const m = lasso.posMode;
+    const xyz = m === 'tsne3d'         ? (d => [d.x_tsne3d || 0, d.y_tsne3d || 0, d.z_tsne3d || 0])
+              : m === 'pacmap3d'       ? (d => [d.x_pacmap3d || 0, d.y_pacmap3d || 0, d.z_pacmap3d || 0])
+              : m === 'consensus3d'    ? (d => [d.x_cons3d || 0, d.y_cons3d || 0, d.z_cons3d || 0])
+              : m === 'umap_tight_3d'  ? (d => [d.x_ut3d || 0, d.y_ut3d || 0, d.z_ut3d || 0])
+              : m === 'umap_global_3d' ? (d => [d.x_ug3d || 0, d.y_ug3d || 0, d.z_ug3d || 0])
+              : m === 'joint3d'        ? (d => [d.x_j3d || 0, d.y_j3d || 0, d.z_j3d || 0])
+              : m === 'sweep3d'        ? (d => [d.x_sweep || 0, d.y_sweep || 0, d.z_sweep || 0])
+              : (d => [d.x3d || 0, d.y3d || 0, d.z || 0]);   // umap-3d default
+    for (const d of pool) {
+      const sp = vp.project(xyz(d));
+      const dx = sp[0] - cx, dy = sp[1] - cy;
+      if (dx*dx / rx2 + dy*dy / ry2 <= 1) matches.add(d.nid);
+    }
+  } else { return matches; }
+
+  return matches;
+}
+
+// ─── URL state read/write ────────────────────────────────────────────
+// Compact encoding so the URL is human-skimmable:
+//   pm = u | t | 3  (default u)
+//   q  = search text
+//   ds = comma-sep dataset numbers
+//   df, dt = date from / to (yyyy-mm-dd)
+//   sn = sender substring
+//   cs = case substring
+//   st, sf, su = stamp type, from, to
+//   tf = primary type filter (email/court/...)
+//   l  = lasso(s), `;`-separated. Each: W,cx,cy,rx,ry  OR  S,cx,cy,rx,ry,w,h,tx,ty,tz,zoom,rx,ro
+//   cam = current camera: tx,ty,zoom[,rotX,rotOrbit]
+function num(v) {
+  // Round to keep URLs tidy without losing meaningful precision
+  return Number(v).toFixed(4).replace(/\.?0+$/, '');
+}
+
+function encodeLasso(lasso) {
+  // posMode appended at the end so old decoders (which use fixed-position
+  // parsing) ignore it gracefully. New decoder reads it if present.
+  if (lasso.world) {
+    const {cx, cy, rx, ry} = lasso.world;
+    return `W,${num(cx)},${num(cy)},${num(rx)},${num(ry)},${lasso.posMode || 'umap'}`;
+  }
+  if (lasso.screen && lasso.cam) {
+    const s = lasso.screen, c = lasso.cam;
+    return `S,${num(s.cx)},${num(s.cy)},${num(s.rx)},${num(s.ry)},${s.w},${s.h},${num(c.tx)},${num(c.ty)},${num(c.tz)},${num(c.zoom)},${num(c.rx)},${num(c.ro)},${lasso.posMode || '3d'}`;
+  }
+  return null;
+}
+
+function decodeLasso(s, posModeHint) {
+  const parts = s.split(',');
+  const kind = parts[0];
+  if (kind === 'W') {
+    // pos at index 5 (new) or unset (old) — fall back to hint or 'umap'
+    const pm = (parts.length >= 6 && isNaN(+parts[5])) ? parts[5] : (posModeHint || 'umap');
+    return {v: 1, posMode: pm, world: {
+      cx: +parts[1], cy: +parts[2], rx: +parts[3], ry: +parts[4],
+    }};
+  }
+  if (kind === 'S') {
+    // pos at index 13 (new) or unset (old) — fall back to hint or '3d'
+    const pm = (parts.length >= 14 && isNaN(+parts[13])) ? parts[13] : (posModeHint || '3d');
+    return {v: 1, posMode: pm,
+      screen: {cx: +parts[1], cy: +parts[2], rx: +parts[3], ry: +parts[4], w: +parts[5], h: +parts[6]},
+      cam: {tx: +parts[7], ty: +parts[8], tz: +parts[9], zoom: +parts[10], rx: +parts[11], ro: +parts[12]},
+    };
+  }
+  return null;
+}
+
+function writeStateToURL() {
+  if (suspendURLWrite) return;
+  const p = new URLSearchParams();
+  // Readable posMode in the URL (umap is the default, so it's omitted).
+  if (posMode !== 'umap') p.set('pm', posMode);
+  if (typeFilter) p.set('tf', typeFilter);
+
+  // Filter bar state — match the keys we read back in restoreStateFromURL
+  const srcs = [...document.querySelectorAll('#f-source-panel input[type=checkbox]:checked')].map(i => i.value);
+  if (srcs.length) p.set('ds', srcs.join(','));
+  const df = document.getElementById('f-date-from').value; if (df) p.set('df', df);
+  const dt = document.getElementById('f-date-to').value;   if (dt) p.set('dt', dt);
+  const sn = document.getElementById('f-sender').value;    if (sn) p.set('sn', sn);
+  const cs = document.getElementById('f-case').value;      if (cs) p.set('cs', cs);
+  const st = document.getElementById('f-stamp-type').value;
+  const sf = document.getElementById('f-stamp-from').value;
+  const su = document.getElementById('f-stamp-to').value;
+  if (st && (sf || su)) { p.set('st', st); if (sf) p.set('sf', sf); if (su) p.set('su', su); }
+  const q = document.getElementById('search').value.trim();
+  if (q.length >= 3) p.set('q', q);
+
+  // Lassos in order
+  if (appliedLassos.length) {
+    p.set('l', appliedLassos.map(encodeLasso).filter(Boolean).join(';'));
+  }
+  // Camera — so a shared link reproduces the exact view, not just the data.
+  //   v = tx,ty,tz,zoom        (2D)
+  //   v = tx,ty,tz,zoom,rx,ro  (3D — also encodes orbit/tilt)
+  if (currentViewState) {
+    const t = currentViewState.target || [0, 0, 0];
+    const v = [num(t[0]), num(t[1]), num(t[2] || 0), num(currentViewState.zoom || 0)];
+    if (viewMode === '3d') {
+      v.push(num(currentViewState.rotationX || 0), num(currentViewState.rotationOrbit || 0));
+    }
+    p.set('v', v.join(','));
+  }
+  const newURL = location.pathname + (p.toString() ? '?' + p.toString() : '');
+  history.replaceState(null, '', newURL);
+}
+
+async function restoreStateFromURL() {
+  const p = new URLSearchParams(location.search);
+  if (!p.toString()) return;
+  suspendURLWrite = true;
+  try {
+    // posMode first (may require lazy-loading 3D / tSNE positions).
+    // Also sync the dropdown UI to match the active mode.
+    // pm is now the readable posMode string; old short codes still decode for
+    // backward-compat with previously shared links.
+    const LEGACY_PM = {t: 'tsne', T: 'tsne3d', p: 'pacmap', '3': '3d'};
+    const VALID_PM = ['umap', '3d', 'umap_tight', 'umap_tight_3d', 'umap_global', 'umap_global_3d',
+                      'tsne', 'tsne3d', 'pacmap', 'pacmap3d', 'consensus', 'consensus3d',
+                      'joint', 'joint3d', 'sweep2d', 'sweep3d'];
+    let pm = p.get('pm');
+    if (pm && LEGACY_PM[pm]) pm = LEGACY_PM[pm];
+    const posModeSelect = document.getElementById('pos-mode');
+    if (pm && VALID_PM.includes(pm)) {
+      posModeSelect.value = pm;
+      await setPosMode(pm);
+    }
+
+    // Restore filter inputs
+    const srcs = (p.get('ds') || '').split(',').filter(Boolean);
+    for (const s of srcs) {
+      const cb = document.querySelector(`#f-source-panel input[value="${s}"]`);
+      if (cb) cb.checked = true;
+    }
+    const df = p.get('df'); if (df) document.getElementById('f-date-from').value = df;
+    const dt = p.get('dt'); if (dt) document.getElementById('f-date-to').value = dt;
+    const sn = p.get('sn'); if (sn) document.getElementById('f-sender').value = sn;
+    const cs = p.get('cs'); if (cs) document.getElementById('f-case').value = cs;
+    const st = p.get('st'); if (st) document.getElementById('f-stamp-type').value = st;
+    const sf = p.get('sf'); if (sf) document.getElementById('f-stamp-from').value = sf;
+    const su = p.get('su'); if (su) document.getElementById('f-stamp-to').value = su;
+    const q  = p.get('q');  if (q)  document.getElementById('search').value = q;
+
+    if (p.get('tf')) {
+      typeFilter = p.get('tf');
+      subtypeColorMap = null;
+      buildLegend();
+    }
+
+    // Now run the (debounced) filter once so server-side intersections fetch.
+    // refilterAtlas is debounced — call its inner directly via a tiny adapter:
+    const filterRows = !!(srcs.length || df || dt || sn || cs || st);
+    if (filterRows && typeof window._refilterNow === 'function') {
+      await window._refilterNow();   // hookable: setupFilterBar exposes this
+    }
+    // Restore the keyword search as its own 'search' constraint — refilterAtlas
+    // no longer reads #search, so a shared ?q=… URL must be re-applied here.
+    // Yield once so the rest of the module finishes initializing first:
+    // applySearch() touches searchFetchSeq, declared further down the script,
+    // and restoreStateFromURL() is invoked synchronously during module init.
+    if (q) {
+      await new Promise(r => setTimeout(r, 0));
+      await applySearch(q);
+    }
+
+    // Now replay lassos in order
+    const lassoStr = p.get('l');
+    if (lassoStr) {
+      const pmFull = (pm && VALID_PM.includes(pm)) ? pm : 'umap';
+      for (const seg of lassoStr.split(';').filter(Boolean)) {
+        const lasso = decodeLasso(seg, pmFull);
+        if (!lasso) continue;
+        // computeLassoMatches() rebuilds each lasso's own viewport internally,
+        // so there's no need to move the live camera here — the final view is
+        // restored separately from the v= param.
+        const matchSet = computeLassoMatches(lasso);
+        addLassoConstraint({label: 'Lasso ' + (++lassoSeq), payload: lasso, matchSet});
+      }
+    }
+  } finally {
+    suspendURLWrite = false;
+  }
+  // Composite the restored constraint stack once, now that suspendURLWrite is
+  // off so the canonical URL gets (re)written.
+  recomputeComposite();
+  // Finally, restore the shared camera (v=) — applied LAST so it wins over the
+  // fit-to-data + per-lasso replay cameras that moved the camera during restore.
+  const vStr = p.get('v');
+  if (vStr) {
+    const c = vStr.split(',').map(Number);
+    if (c.length >= 4 && c.every(n => isFinite(n))) {
+      currentViewState = {
+        ...currentViewState,
+        target: [c[0], c[1], c[2]],
+        zoom: c[3],
+        ...(c.length >= 6 ? { rotationX: c[4], rotationOrbit: c[5] } : {}),
+        transitionDuration: 0,
+      };
+      deck.setProps({ viewState: currentViewState, layers: buildLayers(currentViewState) });
+      updateAxisGizmo(currentViewState);
+    }
+  }
+}
+
+function fitViewState(getX, getY) {
+  let lo_x = Infinity, hi_x = -Infinity, lo_y = Infinity, hi_y = -Infinity;
+  for (const d of docs) {
+    const x = getX(d), y = getY(d);
+    if (x < lo_x) lo_x = x; if (x > hi_x) hi_x = x;
+    if (y < lo_y) lo_y = y; if (y > hi_y) hi_y = y;
+  }
+  const spanX = hi_x - lo_x, spanY = hi_y - lo_y;
+  // Match the initial fitZoom heuristic used for UMAP positions.bin
+  const z = Math.log2(Math.min(window.innerWidth / spanX, window.innerHeight / spanY)) + 0.2;
+  return {
+    target: [(lo_x+hi_x)/2, (lo_y+hi_y)/2, 0],
+    zoom: z, minZoom: z - 1.5, maxZoom: 24,
+  };
+}
+
+// Helper: compute 3D fit-viewState from accessors. Replaces the per-mode
+// hand-unrolled bbox loops so adding new 3D projections doesn't bloat the
+// switch statement.
+function fitViewState3D(getX, getY, getZ) {
+  let lo=[Infinity,Infinity,Infinity], hi=[-Infinity,-Infinity,-Infinity];
+  for (const d of docs) {
+    const x=getX(d)||0, y=getY(d)||0, z=getZ(d)||0;
+    if (x<lo[0]) lo[0]=x; if (x>hi[0]) hi[0]=x;
+    if (y<lo[1]) lo[1]=y; if (y>hi[1]) hi[1]=y;
+    if (z<lo[2]) lo[2]=z; if (z>hi[2]) hi[2]=z;
+  }
+  const span = Math.max(hi[0]-lo[0], hi[1]-lo[1], hi[2]-lo[2]);
+  const zoom = Math.log2(Math.min(window.innerWidth, window.innerHeight) / span);
+  return {
+    target: [(lo[0]+hi[0])/2, (lo[1]+hi[1])/2, (lo[2]+hi[2])/2],
+    zoom: zoom - 1,
+    rotationX: 20, rotationOrbit: 15,
+    minZoom: zoom - 3, maxZoom: 24,
+  };
+}
+
+async function setPosMode(mode) {
+  if (mode === posMode) return;
+  // Lazy-load whichever projection's bytes we need
+  if (mode === '3d')              await ensure3DLoaded();
+  if (mode === 'tsne')            await ensureTsneLoaded();
+  if (mode === 'tsne3d')          await ensureTsne3dLoaded();
+  if (mode === 'pacmap')          await ensurePacmapLoaded();
+  if (mode === 'pacmap3d')        await ensurePacmap3dLoaded();
+  if (mode === 'consensus')       await ensureConsensusLoaded();
+  if (mode === 'consensus3d')     await ensureConsensus3dLoaded();
+  if (mode === 'umap_tight')      await ensureUmapTightLoaded();
+  if (mode === 'umap_tight_3d')   await ensureUmapTight3dLoaded();
+  if (mode === 'umap_global')     await ensureUmapGlobalLoaded();
+  if (mode === 'umap_global_3d')  await ensureUmapGlobal3dLoaded();
+  if (mode === 'joint')           await ensureJointLoaded();
+  if (mode === 'joint3d')         await ensureJoint3dLoaded();
+  posMode = mode;
+  // 3D modes use OrbitView; everything else is Orthographic
+  const is3D = ['3d','tsne3d','pacmap3d','consensus3d','umap_tight_3d','umap_global_3d','joint3d'].includes(mode);
+  viewMode = is3D ? '3d' : '2d';
+  activeDataCache = null;
+  let vs;
+  if (mode === '3d') {
+    vs = fitViewState3D(d => d.x3d, d => d.y3d, d => d.z);
+  } else if (mode === 'tsne3d') {
+    vs = fitViewState3D(d => d.x_tsne3d, d => d.y_tsne3d, d => d.z_tsne3d);
+  } else if (mode === 'pacmap3d') {
+    vs = fitViewState3D(d => d.x_pacmap3d, d => d.y_pacmap3d, d => d.z_pacmap3d);
+  } else if (mode === 'consensus3d') {
+    vs = fitViewState3D(d => d.x_cons3d, d => d.y_cons3d, d => d.z_cons3d);
+  } else if (mode === 'umap_tight_3d') {
+    vs = fitViewState3D(d => d.x_ut3d, d => d.y_ut3d, d => d.z_ut3d);
+  } else if (mode === 'umap_global_3d') {
+    vs = fitViewState3D(d => d.x_ug3d, d => d.y_ug3d, d => d.z_ug3d);
+  } else if (mode === 'joint3d') {
+    vs = fitViewState3D(d => d.x_j3d, d => d.y_j3d, d => d.z_j3d);
+  } else if (mode === 'tsne') {
+    vs = fitViewState(d => d.x_tsne, d => d.y_tsne);
+  } else if (mode === 'pacmap') {
+    vs = fitViewState(d => d.x_pacmap, d => d.y_pacmap);
+  } else if (mode === 'consensus') {
+    vs = fitViewState(d => d.x_cons, d => d.y_cons);
+  } else if (mode === 'umap_tight') {
+    vs = fitViewState(d => d.x_ut, d => d.y_ut);
+  } else if (mode === 'umap_global') {
+    vs = fitViewState(d => d.x_ug, d => d.y_ug);
+  } else if (mode === 'joint') {
+    vs = fitViewState(d => d.x_j, d => d.y_j);
+  } else {
+    vs = initialViewState;
+  }
+  // Re-anchor the LOD ramp (radius + alpha) to the new fit zoom. Without this,
+  // tSNE (which spans ~270 units vs UMAP's ~40) gets a much lower fit zoom and
+  // the dz-based radius growth never reaches comparable size at deep zoom.
+  const newAnchor = vs.zoom + (mode === '3d' ? 1 : 0);
+  tune.fitAnchor = newAnchor;
+  tune.rampStart = newAnchor + 5;
+  tune.rampEnd = newAnchor + 20;
+  // (syncRampSliders no longer exists — ramp constants stay in TUNE_DEFAULTS.)
+  currentViewState = vs;
+  deck.setProps({ views: makeView(), viewState: vs, layers: buildLayers(vs) });
+  setBodyViewMode();
+  updateAxisGizmo(currentViewState);
+  document.getElementById('atlas-canvas').focus();
+}
+document.getElementById('pos-mode').addEventListener('change', e => {
+  setPosMode(e.target.value).then(() => writeStateToURL());
+});
+
+// ─── Lasso selection: shift+drag to ellipse-select on the canvas ────────────
+// Selects all docs whose projected screen position falls inside the ellipse.
+// Works in 2D and 3D (uses deck.gl viewport.project on each dot's world coords).
+(function setupLasso() {
+  const svg = document.getElementById('lasso-svg');
+  const ell = document.getElementById('lasso-ellipse');
+  let dragging = false;
+  let startX = 0, startY = 0;
+
+  // While Shift is held, body.lasso-mode flips the SVG's pointer-events so it
+  // intercepts mouse events ahead of deck.gl's canvas controller.
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Shift') document.body.classList.add('lasso-mode');
+  });
+  document.addEventListener('keyup', e => {
+    if (e.key === 'Shift' && !dragging) document.body.classList.remove('lasso-mode');
+  });
+
+  function setPointerEventsActive(on) {
+    svg.style.pointerEvents = on ? 'auto' : 'none';
+  }
+  // Update on every Shift state change
+  new MutationObserver(() => {
+    setPointerEventsActive(document.body.classList.contains('lasso-mode'));
+  }).observe(document.body, {attributes: true, attributeFilter: ['class']});
+
+  svg.addEventListener('mousedown', e => {
+    if (!e.shiftKey) return;
+    e.preventDefault();
+    e.stopPropagation();
+    dragging = true;
+    startX = e.clientX; startY = e.clientY;
+    ell.setAttribute('cx', startX);
+    ell.setAttribute('cy', startY);
+    ell.setAttribute('rx', 0);
+    ell.setAttribute('ry', 0);
+  });
+  window.addEventListener('mousemove', e => {
+    if (!dragging) return;
+    const cx = (startX + e.clientX) / 2;
+    const cy = (startY + e.clientY) / 2;
+    const rx = Math.abs(e.clientX - startX) / 2;
+    const ry = Math.abs(e.clientY - startY) / 2;
+    ell.setAttribute('cx', cx);
+    ell.setAttribute('cy', cy);
+    ell.setAttribute('rx', rx);
+    ell.setAttribute('ry', ry);
+  });
+  window.addEventListener('mouseup', e => {
+    if (!dragging) return;
+    dragging = false;
+    if (!e.shiftKey) document.body.classList.remove('lasso-mode');
+    // Compute selection
+    const cx = +ell.getAttribute('cx'), cy = +ell.getAttribute('cy');
+    const rx = +ell.getAttribute('rx'), ry = +ell.getAttribute('ry');
+    if (rx < 6 || ry < 6) {
+      ell.setAttribute('rx', 0); ell.setAttribute('ry', 0);
+      return;
+    }
+    finalizeLasso(cx, cy, rx, ry);
+    // Reset the ellipse so it disappears after the selection settles
+    ell.setAttribute('rx', 0); ell.setAttribute('ry', 0);
+  });
+
+  function finalizeLasso(cx, cy, rx, ry) {
+    // Capture a replayable record (world ellipse for 2D, screen+cam for 3D),
+    // then add it to the constraint stack as a standalone lasso constraint.
+    const vps = deck.getViewports ? deck.getViewports() : (deck.viewManager ? deck.viewManager.getViewports() : []);
+    const vp = vps && vps[0];
+    if (!vp) return;
+    const lasso = buildLassoRecord(vp, cx, cy, rx, ry);
+    if (!lasso) return;
+    const matchSet = computeLassoMatches(lasso);
+    addLassoConstraint({label: 'Lasso ' + (++lassoSeq), payload: lasso, matchSet});
+    recomputeComposite();
+  }
+
+  function clearLasso() {
+    // Drop the whole constraint stack (search + filter + lassos) and hide the
+    // legacy filter-banner. clearConstraints() handles the recompute + URL.
+    clearConstraints();
+    document.getElementById('filter-banner').classList.remove('show');
+  }
+  // Esc clears any active constraint stack selection.
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && constraints.length) clearLasso();
+  });
+})();
+
+// Help popover — show/hide
+(function setupHelpPopover() {
+  const btn = document.getElementById('help-btn');
+  const pop = document.getElementById('help-popover');
+  const backdrop = document.getElementById('help-backdrop');
+  const close = document.getElementById('help-close');
+  // Insert the real doc count once known
+  document.getElementById('help-doc-count').textContent = docs.length.toLocaleString();
+  function open()  { pop.classList.add('open'); backdrop.classList.add('open'); }
+  function shut()  { pop.classList.remove('open'); backdrop.classList.remove('open'); }
+  btn.addEventListener('click', open);
+  close.addEventListener('click', shut);
+  backdrop.addEventListener('click', shut);
+  document.addEventListener('keydown', e => { if (e.key === 'Escape' && pop.classList.contains('open')) shut(); });
+})();
+
+// Axis gizmo — applies the current 3D view's rotation so the user sees where
+// the world axes point in screen space. Hidden in 2D via body.is-3d.
+function updateAxisGizmo(viewState) {
+  const frame = document.getElementById('gizmo-frame');
+  if (!frame || !viewState) return;
+  const rx = viewState.rotationX || 0;
+  const ry = viewState.rotationOrbit || 0;
+  frame.style.transform = `rotateX(${-rx}deg) rotateY(${ry}deg)`;
+}
+function setBodyViewMode() {
+  document.body.classList.toggle('is-3d', viewMode === '3d');
+}
+setBodyViewMode();
+
+// Every control's `change` event funnels into refilterAtlas() (debounced).
+// then subset on the client via the existing searchMatchSet plumbing.
+(function setupFilterBar(){ window._refilterNow=async()=>{}; window._resetFilterInputs=()=>{}; })();
+
+// On load: if the URL has any shareable state params (?pm=... &l=... etc),
+// restore them. This runs before applySearchHandoff so URL state wins over
+//
+// If there's no URL pm param, sync to the dropdown's default (UMAP 3D). The
+// posMode global stays 'umap' until ensure3DLoaded() finishes so the initial
+// deck render works.
+(async () => {
+  await restoreStateFromURL();
+  // If URL didn't already set a posMode, transition to whatever the dropdown
+  // shows as selected (the default in markup is 3d).
+  if (!new URLSearchParams(location.search).has('pm')) {
+    const dropdown = document.getElementById('pos-mode');
+    const def = dropdown ? dropdown.value : '3d';
+    if (def !== posMode) await setPosMode(def);
+    // Apply default starting zoom (90% of fit-to-data) once the right view is up
+    const targetZoom = tune.fitAnchor + Math.log2(DEFAULT_START_ZOOM_PCT / 100);
+    const vs = {...currentViewState, zoom: targetZoom};
+    currentViewState = vs;
+    deck.setProps({viewState: vs, layers: buildLayers(vs)});
+  }
+})();
+
+// Reset view button: hard-reload /atlas with no params → fresh defaults
+// (color=doc type, view=UMAP 3D, no filters, no lassos, 90% fit zoom).
+document.getElementById('reset-view-btn').addEventListener('click', () => {
+  location.reload();
+});
+
+// Share button: copy current URL (which writeStateToURL keeps in sync) to clipboard
+document.getElementById('share-btn').addEventListener('click', async () => {
+  writeStateToURL();   // make sure URL is up-to-date before copying
+  const btn = document.getElementById('share-btn');
+  const orig = btn.textContent;
+  try {
+    await navigator.clipboard.writeText(location.href);
+    btn.textContent = '✓';
+    setTimeout(() => { btn.textContent = orig; }, 1500);
+  } catch (e) {
+    btn.textContent = '!';
+    setTimeout(() => { btn.textContent = orig; }, 1500);
+  }
+});
+
+// the constraint stack — it shows as a pill, not the legacy filter-banner.
+(function applySearchHandoff(){})();
+
+// Hover panel — supports both ephemeral hover and click-to-pin.
+// Click toggles pinned state; while pinned, hovers don't change content.
+const hoverPanel = document.getElementById('hover-panel');
+const hoverNid = document.getElementById('hover-nid');
+const hoverMeta = document.getElementById('hover-meta');
+const hoverThumb = document.getElementById('hover-thumb');
+const hoverOpen = document.getElementById('hover-open');
+const hoverPinLabel = null;  // legacy — pin/hover label removed
+const hoverCloseBtn = document.getElementById('hover-close');
+let pinnedNid = null;            // nid string, or null
+let currentlyShownNid = null;    // last nid whose content is in the panel
+let hoverDebounceTimer = null;
+
+// Sender + FTS snippet cache to avoid re-fetching same doc.
+const _hoverMetaCache = new Map();  // nid → {sender, email_date}
+const _hoverSnippetCache = new Map();  // `${nid}::${q}` → snippet html
+
+function fetchExtraMeta(){}
+
+function fetchSnippet(){}
+
+// Returns the active FTS query (search input, ≥3 chars, not an id prefix)
+function currentFtsQuery(){}
+
+function renderHoverContent(){}
+
+function showHover(obj, x, y) {
+  // If pinned, ignore further hover events (panel stays on pinned doc).
+  if (pinnedNid) return;
+  // While the user is panning/orbiting the canvas, suppress the hover panel
+  // entirely — the cursor passes over many dots in a drag and the flicker is
+  // worse than no info. Pinned docs are still shown.
+  if (isCanvasDragging) {
+    hoverPanel.classList.remove('show');
+    currentlyShownNid = null;
+    return;
+  }
+  clearTimeout(hoverDebounceTimer);
+  if (!obj) {
+    // Small delay so micro-mouse-jitters between dots don't flicker the panel closed
+    hoverDebounceTimer = setTimeout(() => {
+      if (!pinnedNid) {
+        hoverPanel.classList.remove('show');
+        currentlyShownNid = null;
+      }
+    }, 200);
+    return;
+  }
+  hoverPanel.classList.add('show');
+  /* pin label removed */
+  hoverCloseBtn.style.display = 'none';
+  renderHoverContent(obj);
+}
+
+// Canvas drag state — set by mousedown/mouseup on #atlas-canvas. Used by
+// showHover to suppress the hover panel mid-drag (unless a doc is pinned).
+let isCanvasDragging = false;
+(function wireCanvasDragSuppression() {
+  const c = document.getElementById('atlas-canvas');
+  if (!c) return;
+  c.addEventListener('mousedown', () => {
+    isCanvasDragging = true;
+    if (!pinnedNid) {
+      hoverPanel.classList.remove('show');
+      currentlyShownNid = null;
+    }
+  });
+  // mouseup or mouseleave both end the drag
+  const endDrag = () => { isCanvasDragging = false; };
+  window.addEventListener('mouseup', endDrag);
+  c.addEventListener('mouseleave', endDrag);
+})();
+
+function pinHover(obj) {
+  if (pinnedNid === obj.nid) {
+    // Click the same dot again → unpin
+    unpinHover();
+    return;
+  }
+  pinnedNid = obj.nid;
+  hoverPanel.classList.add('show', 'pinned');
+  /* pin label removed */
+  hoverCloseBtn.style.display = '';
+  renderHoverContent(obj);
+}
+
+function unpinHover() {
+  pinnedNid = null;
+  hoverPanel.classList.remove('pinned');
+  /* pin label removed */
+  hoverCloseBtn.style.display = 'none';
+  // Don't hide — let the next hover update it; or hide after a beat
+  hoverPanel.classList.remove('show');
+  currentlyShownNid = null;
+}
+
+hoverCloseBtn.addEventListener('click', unpinHover);
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && pinnedNid) unpinHover();
+});
+
+function escapeHtml(s) {
+  if (!s) return '';
+  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+// zoomed out and dot picking is unreliable.
+window.atlasPin = function(nid) {
+  const d = docs[nidToIdx.get(nid)];
+  if (!d) return 'not found';
+  pinHover(d);
+  return 'pinned';
+};
+
+// Color-by select
+document.getElementById('color-by').addEventListener('change', e => {
+  colorMode = e.target.value;
+  // Switching color mode away from any doc_type variant clears subcategory drilldown.
+  if (colorMode !== 'doc_type' && colorMode !== 'doc_type_v3') typeFilter = '';
+  // Subtype color map is keyed on the current mode's vocab — invalidate it.
+  subtypeColorMap = null;
+  deck.setProps({layers: buildLayers(currentViewState)});
+  buildLegend();
+});
+
+// Primary doc_type → palette used both for top-level legend and for getColor().
+// Ordered by corpus frequency. Every entry below has a distinct color in
+// PRIMARY_TYPE_COLORS — only `other` (added in buildLegend) stays grey.
+// Legend rows — built dynamically per active color mode so that v3 shows the
+// new primaries (unclassified, plist, placeholder, etc.) rather than the v1
+// `misc` bucket. PRIMARY_TYPE_COLORS has both v1 and v3 keys.
+const PRIMARY_TYPES_V1 = [];
+const PRIMARY_TYPES_V3 = [];
+const PRIMARY_TYPES = PRIMARY_TYPES_V1.map(p => ({...p, color: PRIMARY_TYPE_COLORS[p.key]}));
+
+// Distinct, high-contrast palette for subcategories (tab12 / Vega-friendly).
+// Spread across the full hue wheel rather than hue-shifted from the primary,
+// so e.g. email.header vs email.footer_only are visually unmistakable instead
+// of "hot pink, pink, light pink, salmon".
+const SUBTYPE_PALETTE = [
+  [110,168,254], [251,191,36], [52,211,153], [167,139,250],
+  [244,114,182], [239,68,68],  [34,211,238], [253,164,87],
+  [163,230,53], [217,119,235], [251,113,133], [148,163,184],
+];
+function buildSubtypeColors(primary) {
+  // Pick the field that the active color mode is keying on (v1 doc_type vs v3 doc_type)
+  const field = (colorMode === 'doc_type_v3') ? 'v3' : 'dt';
+  const subtypes = new Set();
+  for (const d of docs) {
+    const t = d[field];
+    if (t && t.split('.')[0] === primary) subtypes.add(t);
+  }
+  const list = [...subtypes].sort();
+  const map = {};
+  for (let i = 0; i < list.length; i++) {
+    map[list[i]] = SUBTYPE_PALETTE[i % SUBTYPE_PALETTE.length];
+  }
+  return {list, map};
+}
+function rgbToHsl(r, g, b) {
+  r/=255; g/=255; b/=255;
+  const mx = Math.max(r,g,b), mn = Math.min(r,g,b);
+  let h, s, l = (mx+mn)/2;
+  if (mx === mn) { h = s = 0; }
+  else {
+    const d = mx - mn;
+    s = l > 0.5 ? d/(2-mx-mn) : d/(mx+mn);
+    switch (mx) {
+      case r: h = (g-b)/d + (g<b?6:0); break;
+      case g: h = (b-r)/d + 2; break;
+      case b: h = (r-g)/d + 4; break;
+    }
+    h *= 60;
+  }
+  return [h, s, l];
+}
+function hslToRgb(h, s, l) {
+  h /= 360;
+  let r, g, b;
+  if (s === 0) { r = g = b = l; }
+  else {
+    const hue2rgb = (p, q, t) => {
+      if (t < 0) t += 1;
+      if (t > 1) t -= 1;
+      if (t < 1/6) return p + (q-p)*6*t;
+      if (t < 1/2) return q;
+      if (t < 2/3) return p + (q-p)*(2/3-t)*6;
+      return p;
+    };
+    const q = l < 0.5 ? l*(1+s) : l + s - l*s;
+    const p = 2*l - q;
+    r = hue2rgb(p, q, h + 1/3);
+    g = hue2rgb(p, q, h);
+    b = hue2rgb(p, q, h - 1/3);
+  }
+  return [Math.round(r*255), Math.round(g*255), Math.round(b*255)];
+}
+
+// Legend — clickable. Doc-type legend rows act as filters: click "email"
+// to subset the atlas to email docs and switch the legend to email's subcategories.
+// A "← back" row at the top returns to the top-level view.
+function buildLegend() {
+  const el = document.getElementById('legend');
+  let html = '';
+  if (colorMode === 'dataset') {
+    // 14 distinct dataset IDs in atlas (DS 1-12, 98, 99). DS 1-7 are tiny
+    /* dataset legend removed */
+  } else if (colorMode === 'year') {
+    // Discrete bucket legend — counts come from the current docs[] array so
+    // they reflect any active filters.
+    const counts = {undated: 0};
+    for (const b of YEAR_BUCKETS) counts[b.label] = 0;
+    for (const d of docs) {
+      const y = d.year || 0;
+      if (!y) { counts.undated++; continue; }
+      for (const b of YEAR_BUCKETS) if (y >= b.min && y <= b.max) { counts[b.label]++; break; }
+    }
+    for (const b of YEAR_BUCKETS) {
+      const n = counts[b.label] || 0;
+      html += `<div class="row"><div class="swatch" style="background:rgb(${b.color.join(',')})"></div>${b.label} <span style="color:var(--muted);font-size:10px;">${n.toLocaleString()}</span></div>`;
+    }
+    html += `<div class="row"><div class="swatch" style="background:rgb(${YEAR_UNDATED_COLOR.join(',')})"></div>undated <span style="color:var(--muted);font-size:10px;">${counts.undated.toLocaleString()}</span></div>`;
+  } else if ((colorMode === 'doc_type' || colorMode === 'doc_type_v3') && !typeFilter) {
+    // Top-level — primary categories, click to drill down. v3 has extra primaries
+    // (plist, placeholder, handwritten, letter, corporate, unclassified) that v1
+    // didn't expose; the v1 legend only shows the original list.
+    const list = (colorMode === 'doc_type_v3' ? PRIMARY_TYPES_V3 : PRIMARY_TYPES_V1)
+      .map(p => ({...p, color: PRIMARY_TYPE_COLORS[p.key] || [120,120,120]}));
+    for (const p of list) {
+      html += `<div class="row clickable" data-primary="${p.key}" title="Click to subset to ${p.label} docs"><div class="swatch" style="background:rgb(${p.color.join(',')})"></div>${p.label}</div>`;
+    }
+    html += `<div class="row"><div class="swatch" style="background:rgb(120,120,120)"></div>other</div>`;
+  } else if ((colorMode === 'doc_type' || colorMode === 'doc_type_v3') && typeFilter) {
+    // Drilled in — show "← back" then this primary's subcategories (from whichever vocab is active)
+    html += `<div class="row back" id="legend-back" title="Back to all types">← back to all types</div>`;
+    html += `<div class="row" style="color:var(--muted);font-size:11px;">${typeFilter}:</div>`;
+    if (!subtypeColorMap || subtypeColorMap.primary !== typeFilter) {
+      subtypeColorMap = buildSubtypeColors(typeFilter);
+      subtypeColorMap.primary = typeFilter;
+    }
+    for (const sub of subtypeColorMap.list) {
+      const c = subtypeColorMap.map[sub];
+      const subLabel = sub.indexOf('.') >= 0 ? sub.substring(sub.indexOf('.') + 1) : sub;
+      html += `<div class="row"><div class="swatch" style="background:rgb(${c.join(',')})"></div>${subLabel}</div>`;
+    }
+  }
+  el.innerHTML = html;
+  // Wire clicks for drilldown / back
+  el.querySelectorAll('.row.clickable').forEach(row => {
+    row.addEventListener('click', () => {
+      typeFilter = row.dataset.primary;
+      subtypeColorMap = null;  // recompute
+      activeDataCache = null;
+      buildLegend();
+      // No auto-zoom on legend clicks — the user is exploring within
+      // their current view, and yanking the camera away to fit all docs
+      // of that type globally would lose their context.
+      deck.setProps({layers: buildLayers(currentViewState)});
+      writeStateToURL();
+    });
+  });
+  const back = el.querySelector('#legend-back');
+  if (back) {
+    back.addEventListener('click', () => {
+      typeFilter = '';
+      activeDataCache = null;
+      buildLegend();
+      deck.setProps({layers: buildLayers(currentViewState)});
+      writeStateToURL();
+    });
+  }
+  // Re-position the axis gizmo above whatever height the legend now has
+  positionAxisGizmo();
+}
+
+function positionAxisGizmo() {
+  const legend = document.getElementById('legend');
+  const gizmo  = document.getElementById('axis-gizmo');
+  if (!legend || !gizmo) return;
+  // legend uses bottom:16px → legend's top edge is at (16 + legend.offsetHeight)
+  // gizmo sits 12px above that
+  const gap = 12;
+  const offsetFromBottom = 16 + legend.offsetHeight + gap;
+  gizmo.style.bottom = offsetFromBottom + 'px';
+}
+window.addEventListener('resize', positionAxisGizmo);
+buildLegend();
+
+// Search: subsets the scatter plot AND shows a top-N dropdown.
+// Two modes:
+const searchInput = document.getElementById('search');
+const searchResults = document.getElementById('search-results');
+let searchDebounce = null;
+let searchFetchSeq = 0;  // monotonic counter to discard stale async responses
+const FTS_LIMIT = 200000;  // matches datasette's lifted max_returned_rows
+
+function applySearch(){}
+
+function wireSearchResultClicks(){}
+
+searchInput.addEventListener('input', e => {
+  const q = e.target.value.trim();
+  clearTimeout(searchDebounce);
+  // Longer debounce for FTS (network), shorter for prefix
+  const isPrefix = /^$/.test(q);
+  searchDebounce = setTimeout(() => applySearch(q), isPrefix ? 100 : 350);
+  if (!q || q.length < 3) { searchResults.style.display = 'none'; return; }
+  const upper = q.toUpperCase();
+  if (!isPrefix) { return; }  // FTS dropdown handled by applySearch
+  const matches = [];
+  for (const d of docs) {
+    if (d.nid.includes(upper)) {
+      matches.push(d);
+      if (matches.length >= 20) break;
+    }
+  }
+  if (!matches.length) { searchResults.style.display = 'none'; return; }
+  searchResults.innerHTML = matches.map(d =>
+    `<div class="row" data-nid="${d.nid}"><span class="id">${d.nid}</span> · ${d.dt || ''} · DS${d.ds || ''}</div>`
+  ).join('');
+  searchResults.style.display = 'block';
+  searchResults.querySelectorAll('.row').forEach(r => r.onclick = () => {
+    const e2 = r.dataset.nid;
+    const d = docs[nidToIdx.get(e2)];
+    if (d) {
+      const newView = { target: [d.x, d.y, 0], zoom: 4, transitionDuration: 800 };
+      deck.setProps({viewState: newView, layers: buildLayers(newView)});
+      searchResults.style.display = 'none';
+      searchInput.value = e2;
+    }
+  });
+});
+document.addEventListener('click', e => {
+  if (!e.target.closest('.search')) searchResults.style.display = 'none';
+});
+
+/* ---- injected by build_engine.py ---- */
+// ===== pointcloud-atlas generalization layer (v0.1) =========================
+// Injected at the end of the atlas module by build_engine.py.
+// Drives the whole UI from manifest.config: title/labels, color-by ANY
+// categorical or continuous attribute, legend (swatches or gradient), and the
+// View dropdown. Categorical subset-by-legend and a generic filter rail are v0.2.
+// Relies on module globals: data, docs, deck, currentViewState, buildLayers,
+// colorMode (let), getColor / buildLegend / renderHoverContent (fn decls),
+// currentZoomAlpha.
+(function generalize() {
+  const cfg = data && data.manifest && data.manifest.config;
+  if (!cfg) return;  // legacy data with no config block -> keep original behavior
+
+  // ---- continuous colormaps (stops, 0..1) ---------------------------------
+  const CM = {
+    viridis: [[68,1,84],[59,82,139],[33,145,140],[94,201,98],[253,231,37]],
+    magma:   [[0,0,4],[81,18,124],[183,55,121],[252,137,97],[252,253,191]],
+    inferno: [[0,0,4],[87,16,110],[188,55,84],[249,142,9],[252,255,164]],
+    plasma:  [[13,8,135],[126,3,168],[204,71,120],[248,149,64],[240,249,33]],
+  };
+  const ramp = (stops, t) => {
+    t = Math.min(1, Math.max(0, t));
+    const f = t * (stops.length - 1), i = Math.floor(f), g = f - i;
+    const a = stops[i], b = stops[Math.min(i + 1, stops.length - 1)];
+    return [a[0]+(b[0]-a[0])*g, a[1]+(b[1]-a[1])*g, a[2]+(b[2]-a[2])*g];
+  };
+
+  // ---- attribute access ---------------------------------------------------
+  docs.forEach((d, i) => { d._i = i; });
+  const num = {}, cat = {};
+  const spec = Object.fromEntries(cfg.color_by.map(c => [c.key, c]));
+  const base = (data.manifest.__dataBase) || '/data/';
+  async function loadSidecars() {
+    await Promise.all(cfg.color_by.map(async c => {
+      try {
+        if (c.source.startsWith('num:')) {
+          const r = await fetch(base + 'num_' + c.key + '.bin');
+          if (r.ok) num[c.key] = new Float32Array(await r.arrayBuffer());
+        } else if (c.source.startsWith('cat:')) {
+          const r = await fetch(base + 'cat_' + c.key + '.bin');
+          if (r.ok) cat[c.key] = new Uint16Array(await r.arrayBuffer());
+        }
+      } catch (e) { /* sidecar optional */ }
+    }));
+  }
+  const codeOf = (d, c) => {
+    if (c.source === 'struct:s0') return d.ds;
+    if (c.source === 'struct:s1') return d.year;
+    if (c.source.startsWith('cat:')) return cat[c.key] ? cat[c.key][d._i] : 0;
+    return 0;
+  };
+  const valOf = (d, c) => (num[c.key] ? num[c.key][d._i] : 0);
+
+  // ---- color override -----------------------------------------------------
+  getColor = function (d, mode) {
+    const c = spec[mode];
+    let col = [150, 150, 150];
+    if (c) {
+      if (c.kind === 'categorical') {
+        col = (c.palette && c.palette[codeOf(d, c)]) || [150, 150, 150];
+      } else {
+        const [lo, hi] = c.range;
+        col = ramp(CM[c.colormap] || CM.viridis, hi > lo ? (valOf(d, c) - lo) / (hi - lo) : 0);
+      }
+    }
+    // engine auto-dims alpha for 1.3M-point overplotting; for smaller sets keep
+    // points solid so they stay visible (floor at 200).
+    const alpha = Math.max(200, (typeof currentZoomAlpha === 'number' ? currentZoomAlpha : 220));
+    return [col[0], col[1], col[2], alpha];
+  };
+
+  // ---- legend override ----------------------------------------------------
+  buildLegend = function () {
+    const el = document.getElementById('legend');
+    if (!el) return;
+    const c = spec[colorMode];
+    if (!c) { el.innerHTML = ''; return; }
+    if (c.kind === 'categorical') {
+      el.innerHTML = c.vocab.map((lab, code) => {
+        const col = (c.palette && c.palette[code]) || [150, 150, 150];
+        return `<div class="row"><div class="swatch" style="background:rgb(${col.join(',')})"></div>${lab}</div>`;
+      }).join('');
+    } else {
+      const [lo, hi] = c.range, stops = CM[c.colormap] || CM.viridis;
+      const grad = stops.map((s, i) => `rgb(${s.join(',')}) ${Math.round(100*i/(stops.length-1))}%`).join(',');
+      el.innerHTML =
+        `<div style="font-size:11px;color:var(--muted);margin-bottom:4px;">${c.label}</div>` +
+        `<div style="height:12px;border-radius:3px;background:linear-gradient(to right,${grad});"></div>` +
+        `<div style="display:flex;justify-content:space-between;font-size:10px;color:var(--muted);margin-top:2px;"><span>${(+lo).toPrecision(3)}</span><span>${(+hi).toPrecision(3)}</span></div>`;
+    }
+  };
+
+  // ---- hover override (id + configured fields; no PDF thumbnail) -----------
+  const labelFor = (d, c) => c.kind === 'categorical'
+    ? (c.vocab[codeOf(d, c)] ?? '?')
+    : (+valOf(d, c)).toPrecision(3);
+  renderHoverContent = function (obj) {
+    const t = document.getElementById('hover-title');
+    const m = document.getElementById('hover-meta');
+    if (t) { t.style.display = ''; t.textContent = `${cfg.id_label || 'id'}: ${obj.nid}`; }
+    if (m) {
+      m.innerHTML = (cfg.hover || []).map(k => spec[k]
+        ? `<div><span style="color:var(--muted)">${spec[k].label}:</span> ${labelFor(obj, spec[k])}</div>`
+        : '').join('');
+    }
+  };
+
+  // ---- chrome: labels, hide v0.1-unsupported widgets ----------------------
+  document.title = cfg.title;
+  const titleEl = document.querySelector('.topbar .title');
+  if (titleEl) titleEl.textContent = cfg.title;
+  document.body.classList.remove('has-filterbar');
+  ['filterbar'].forEach(id => { const e = document.getElementById(id); if (e) e.style.display = 'none'; });
+  document.querySelectorAll('.search').forEach(e => e.style.display = 'none');
+
+  // ---- color-by dropdown from config --------------------------------------
+  const cb = document.getElementById('color-by');
+  if (cb) {
+    cb.innerHTML = cfg.color_by.map(c => `<option value="${c.key}">${c.label}</option>`).join('');
+    colorMode = cfg.color_by[0].key;
+    cb.value = colorMode;
+  }
+
+  // ---- View dropdown: keep only options whose embedding exists ------------
+  const viewOf = { umap:'umap', tsne:'tsne', pacmap:'pacmap', consensus:'consensus',
+                   '3d':'umap', tsne3d:'tsne', pacmap3d:'pacmap', consensus3d:'consensus' };
+  const have2d = new Set(cfg.views_2d || []), have3d = new Set(cfg.views_3d || []);
+  const pm = document.getElementById('pos-mode');
+  if (pm) [...pm.options].forEach(o => {
+    const v = viewOf[o.value], is3d = /3d|^3d$/.test(o.value) || o.value === '3d';
+    const ok = is3d ? have3d.has(v) : have2d.has(v);
+    if (!ok) o.remove();
+  });
+
+  // ---- meta counter relabel ("docs" -> node_label) ------------------------
+  const meta = document.getElementById('meta-counter');
+  if (meta) meta.textContent = meta.textContent.replace(/\bdocs\b/, cfg.node_label || 'nodes');
+
+  // ---- apply ---------------------------------------------------------------
+  loadSidecars().then(() => {
+    buildLegend();
+    if (typeof deck !== 'undefined' && deck) deck.setProps({ layers: buildLayers(currentViewState) });
+  });
+})();
+
+})();  // end async IIFE
+</script>
+</body>
+</html>
