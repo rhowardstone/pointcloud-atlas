@@ -2533,6 +2533,29 @@ document.addEventListener('click', e => {
   };
   const valOf = (d, c) => (num[c.key] ? num[c.key][d._i] : 0);
 
+  // ---- filtering: categorical (legend chips) + continuous (range rail) ----
+  // Per-attribute state: categorical -> {codes:Set}, continuous -> {min,max}.
+  // All active filters AND together into one 'filter' constraint that composes
+  // with search + lasso via the engine's constraint stack.
+  const filt = {};
+  function computeFilterMatch() {
+    const preds = [];
+    for (const c of cfg.color_by) {
+      const st = filt[c.key];
+      if (!st) continue;
+      if (c.kind === 'categorical' && st.codes && st.codes.size)
+        preds.push(d => st.codes.has(codeOf(d, c)));
+      else if (c.kind === 'continuous' && (st.min != null || st.max != null))
+        preds.push(d => { const v = valOf(d, c);
+          return (st.min == null || v >= st.min) && (st.max == null || v <= st.max); });
+    }
+    if (!preds.length) { setSingularConstraint('filter', null); recomputeComposite(); return; }
+    const m = new Set();
+    for (const d of docs) if (preds.every(p => p(d))) m.add(d.nid);
+    setSingularConstraint('filter', { label: 'filters', glyph: '▦', matchSet: m });
+    recomputeComposite();
+  }
+
   // ---- color override -----------------------------------------------------
   getColor = function (d, mode) {
     const c = spec[mode];
@@ -2556,10 +2579,24 @@ document.addEventListener('click', e => {
     const c = spec[colorMode];
     if (!c) { el.innerHTML = ''; return; }
     if (c.kind === 'categorical') {
+      const sel = (filt[c.key] && filt[c.key].codes) || null;
       el.innerHTML = c.vocab.map((lab, code) => {
         const col = (c.palette && c.palette[code]) || [150, 150, 150];
-        return `<div class="row"><div class="swatch" style="background:rgb(${col.join(',')})"></div>${lab}</div>`;
-      }).join('');
+        const on = !sel || sel.has(code);
+        return `<div class="row clickable" data-code="${code}" title="click to filter to ${lab}" `
+          + `style="opacity:${on ? 1 : 0.35};cursor:pointer">`
+          + `<div class="swatch" style="background:rgb(${col.join(',')})"></div>${lab}</div>`;
+      }).join('') + (sel && sel.size
+        ? '<div class="row clickable" id="legend-clear" style="cursor:pointer;color:var(--muted)">↺ clear</div>' : '');
+      el.querySelectorAll('.row.clickable[data-code]').forEach(row => row.addEventListener('click', () => {
+        const code = +row.dataset.code;
+        const st = filt[c.key] || (filt[c.key] = { codes: new Set() });
+        if (st.codes.has(code)) st.codes.delete(code); else st.codes.add(code);
+        if (!st.codes.size) delete filt[c.key];
+        computeFilterMatch(); buildLegend();
+      }));
+      const clr = document.getElementById('legend-clear');
+      if (clr) clr.addEventListener('click', () => { delete filt[c.key]; computeFilterMatch(); buildLegend(); });
     } else {
       const [lo, hi] = c.range, stops = CM[c.colormap] || CM.viridis;
       const grad = stops.map((s, i) => `rgb(${s.join(',')}) ${Math.round(100*i/(stops.length-1))}%`).join(',');
@@ -2606,8 +2643,7 @@ document.addEventListener('click', e => {
   document.title = cfg.title;
   const titleEl = document.querySelector('.topbar .title');
   if (titleEl) titleEl.textContent = cfg.title;
-  document.body.classList.remove('has-filterbar');
-  ['filterbar'].forEach(id => { const e = document.getElementById(id); if (e) e.style.display = 'none'; });
+  // (#filterbar is repopulated as a generic numeric-range rail by buildFilterRail)
   // make the lasso ellipse clearly visible (the default fill/stroke are very faint)
   const lst = document.createElement('style');
   lst.textContent = '#lasso-ellipse{fill:rgba(122,176,255,0.14)!important;stroke:#9ec1ff!important;'
@@ -2677,6 +2713,39 @@ document.addEventListener('click', e => {
     });
   }
 
+  // ---- Continuous filter rail (numeric range per continuous attribute) ----
+  const debounce = (fn, ms = 250) => { let t; return () => { clearTimeout(t); t = setTimeout(fn, ms); }; };
+  function buildFilterRail() {
+    const bar = document.getElementById('filterbar');
+    if (!bar) return;
+    const cont = cfg.color_by.filter(c => c.kind === 'continuous');
+    if (!cont.length) { bar.style.display = 'none'; document.body.classList.remove('has-filterbar'); return; }
+    bar.removeAttribute('hidden'); bar.style.display = ''; bar.className = 'filterbar';
+    document.body.classList.add('has-filterbar');
+    bar.innerHTML = '<span style="color:var(--muted);font-size:11px;margin-right:2px">filter range:</span>' +
+      cont.map(c => `<span class="group" data-key="${c.key}" style="gap:3px">`
+        + `<label style="color:var(--muted);font-size:10px">${c.label}</label>`
+        + `<input type="number" class="f-min" step="any" placeholder="${(+c.range[0]).toPrecision(3)}" style="width:62px">`
+        + `<span style="color:var(--muted)">–</span>`
+        + `<input type="number" class="f-max" step="any" placeholder="${(+c.range[1]).toPrecision(3)}" style="width:62px"></span>`).join('') +
+      '<button class="clear" id="f-clear-all">clear</button>';
+    bar.querySelectorAll('.group[data-key]').forEach(g => {
+      const key = g.dataset.key;
+      const upd = debounce(() => {
+        const mn = g.querySelector('.f-min').value, mx = g.querySelector('.f-max').value;
+        if (mn === '' && mx === '') delete filt[key];
+        else filt[key] = { min: mn === '' ? null : +mn, max: mx === '' ? null : +mx };
+        computeFilterMatch();
+      });
+      g.querySelectorAll('input').forEach(i => i.addEventListener('input', upd));
+    });
+    document.getElementById('f-clear-all').addEventListener('click', () => {
+      bar.querySelectorAll('input').forEach(i => i.value = '');
+      for (const c of cont) delete filt[c.key];
+      computeFilterMatch();
+    });
+  }
+
   // ---- Generic metadata search (subsets the cloud; results link to source) ─
   const catSpecs = cfg.color_by.filter(c => c.kind === 'categorical');
   const docText = d => {
@@ -2717,6 +2786,7 @@ document.addEventListener('click', e => {
   loadSidecars().then(() => {
     tuneDefaults();
     installSizeBy();
+    buildFilterRail();
     wireSearch();
     buildLegend();
     rerender();

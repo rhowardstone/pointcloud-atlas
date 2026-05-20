@@ -58,14 +58,20 @@ Then serve `engine/index.html` with the buffer dir at `/data/`. The engine reads
 | `serve.py` | Dev server: `/` → engine, `/data/` → an example's buffers. |
 | `docs/DATA_CONTRACT.md` | Binary buffer + manifest/config spec. |
 
-## Status
+## Features
 
-Working: config-driven title/labels, color-by categorical **or** continuous attribute,
-swatch/gradient legend, View dropdown trimmed to the embeddings present, 2D/3D, lasso.
+All config-driven, all composing through one constraint stack (filters ∧ search ∧ lasso):
 
-Roadmap: a generic filter rail (categorical + numeric-range + substring) from
-`config.filters` with legend-chip subsetting; an optional `feature_endpoint` for
-lazy per-feature continuous columns at scale; a light theme.
+- **Color by** any categorical (palette + swatch legend) or continuous (colormap + gradient legend) attribute
+- **Filter:** click legend chips to subset by category; numeric-range rail for continuous attributes
+- **Search** node ids + metadata → subsets the cloud, lists clickable results
+- **Lasso** select (shift-drag) → subset; composes with the rest
+- **Size by** any numeric attribute (Display panel); live dot-size / alpha controls
+- **Projections:** UMAP/t-SNE/PaCMAP/Consensus in 2D & 3D (dropdown shows only what's present)
+- **Hover card:** id + configured metadata, optional source thumbnail + link-out (`thumb_template` / `link_template`)
+- Shareable URL state (camera, search, lasso); reset view
+
+Roadmap: optional `feature_endpoint` for lazy per-feature continuous columns at huge scale; a light theme.
 
 ## Credit
 
