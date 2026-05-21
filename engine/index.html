@@ -2651,7 +2651,11 @@ document.addEventListener('click', e => {
   // ---- chrome: labels, hide v0.1-unsupported widgets ----------------------
   document.title = cfg.title;
   const titleEl = document.querySelector('.topbar .title');
-  if (titleEl) titleEl.textContent = cfg.title;
+  if (titleEl) {
+    titleEl.textContent = cfg.title;
+    titleEl.title = cfg.title;   // full title on hover
+    titleEl.style.cssText += ';max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
+  }
   // (#filterbar is repopulated as a generic numeric-range rail by buildFilterRail)
   // make the lasso ellipse clearly visible (the default fill/stroke are very faint)
   const lst = document.createElement('style');
@@ -2671,11 +2675,13 @@ document.addEventListener('click', e => {
   const viewOf = { umap:'umap', tsne:'tsne', pacmap:'pacmap', consensus:'consensus',
                    '3d':'umap', tsne3d:'tsne', pacmap3d:'pacmap', consensus3d:'consensus' };
   const have2d = new Set(cfg.views_2d || []), have3d = new Set(cfg.views_3d || []);
+  const vlabels = cfg.view_labels || {};
   const pm = document.getElementById('pos-mode');
   if (pm) [...pm.options].forEach(o => {
     const v = viewOf[o.value], is3d = /3d|^3d$/.test(o.value) || o.value === '3d';
     const ok = is3d ? have3d.has(v) : have2d.has(v);
-    if (!ok) o.remove();
+    if (!ok) { o.remove(); return; }
+    if (vlabels[v]) o.textContent = vlabels[v] + (is3d ? ' (3D)' : ' (2D)');  // relabel (e.g. PaCMAP slot → PCA)
   });
 
   // ---- meta counter relabel ("docs" -> node_label) ------------------------
@@ -2724,6 +2730,9 @@ document.addEventListener('click', e => {
 
   // ---- Continuous filter rail (numeric range per continuous attribute) ----
   const debounce = (fn, ms = 250) => { let t; return () => { clearTimeout(t); t = setTimeout(fn, ms); }; };
+  // On-demand filters: a single "+ add filter" picker; each chosen attribute adds
+  // one removable range row. Scales to any number of continuous attributes (vs a
+  // box per attribute, which is unusable past a handful).
   function buildFilterRail() {
     const bar = document.getElementById('filterbar');
     if (!bar) return;
@@ -2731,15 +2740,23 @@ document.addEventListener('click', e => {
     if (!cont.length) { bar.style.display = 'none'; document.body.classList.remove('has-filterbar'); return; }
     bar.removeAttribute('hidden'); bar.style.display = ''; bar.className = 'filterbar';
     document.body.classList.add('has-filterbar');
-    bar.innerHTML = '<span style="color:var(--muted);font-size:11px;margin-right:2px">filter range:</span>' +
-      cont.map(c => `<span class="group" data-key="${c.key}" style="gap:3px">`
-        + `<label style="color:var(--muted);font-size:10px">${c.label}</label>`
-        + `<input type="number" class="f-min" step="any" placeholder="${(+c.range[0]).toPrecision(3)}" style="width:62px">`
+    bar.innerHTML = '<span style="color:var(--muted);font-size:11px;">filters:</span>'
+      + `<select id="filter-add" title="add a numeric-range filter" style="font-size:11px;max-width:150px;">`
+      + '<option value="">+ add filter…</option>'
+      + cont.map(c => `<option value="${c.key}">${c.label}</option>`).join('') + '</select>'
+      + '<span id="filter-active" style="display:inline-flex;gap:10px;flex-wrap:wrap;align-items:center;"></span>';
+    const active = bar.querySelector('#filter-active');
+    const byKey = Object.fromEntries(cont.map(c => [c.key, c]));
+    function addRow(key) {
+      const c = byKey[key];
+      if (!c || active.querySelector(`[data-key="${key}"]`)) return;
+      const g = document.createElement('span'); g.className = 'group'; g.dataset.key = key; g.style.gap = '3px';
+      g.innerHTML = `<label style="color:var(--muted);font-size:10px">${c.label}</label>`
+        + `<input type="number" class="f-min" step="any" placeholder="${(+c.range[0]).toPrecision(3)}" style="width:58px">`
         + `<span style="color:var(--muted)">–</span>`
-        + `<input type="number" class="f-max" step="any" placeholder="${(+c.range[1]).toPrecision(3)}" style="width:62px"></span>`).join('') +
-      '<button class="clear" id="f-clear-all">clear</button>';
-    bar.querySelectorAll('.group[data-key]').forEach(g => {
-      const key = g.dataset.key;
+        + `<input type="number" class="f-max" step="any" placeholder="${(+c.range[1]).toPrecision(3)}" style="width:58px">`
+        + `<span class="rm" title="remove filter" style="cursor:pointer;color:var(--muted);padding:0 2px;">✕</span>`;
+      active.appendChild(g);
       const upd = debounce(() => {
         const mn = g.querySelector('.f-min').value, mx = g.querySelector('.f-max').value;
         if (mn === '' && mx === '') delete filt[key];
@@ -2747,11 +2764,10 @@ document.addEventListener('click', e => {
         computeFilterMatch();
       });
       g.querySelectorAll('input').forEach(i => i.addEventListener('input', upd));
-    });
-    document.getElementById('f-clear-all').addEventListener('click', () => {
-      bar.querySelectorAll('input').forEach(i => i.value = '');
-      for (const c of cont) delete filt[c.key];
-      computeFilterMatch();
+      g.querySelector('.rm').addEventListener('click', () => { delete filt[key]; g.remove(); computeFilterMatch(); });
+    }
+    bar.querySelector('#filter-add').addEventListener('change', e => {
+      if (e.target.value) { addRow(e.target.value); e.target.value = ''; }
     });
   }
 
@@ -2812,8 +2828,8 @@ document.addEventListener('click', e => {
     const controls = document.querySelector('.topbar .controls') || document.querySelector('.topbar');
     if (cfg.feature_endpoint && controls) {
       const inp = document.createElement('input');
-      inp.placeholder = 'color by gene…'; inp.title = 'type a gene/feature name + Enter';
-      inp.style.cssText = 'width:110px;margin-left:6px;background:#11141c;color:#cdd3e0;border:1px solid #2a2e3a;border-radius:4px;padding:2px 6px;';
+      inp.placeholder = 'gene…'; inp.title = 'color by any gene/feature — type a name + Enter';
+      inp.style.cssText = 'width:78px;margin-left:6px;background:#11141c;color:#cdd3e0;border:1px solid #2a2e3a;border-radius:4px;padding:2px 6px;';
       controls.insertBefore(inp, controls.firstChild);
       inp.addEventListener('keydown', async e => {
         if (e.key !== 'Enter' || !inp.value.trim()) return;
@@ -2833,8 +2849,8 @@ document.addEventListener('click', e => {
     }
     if (cfg.de_endpoint && controls) {
       const btn = document.createElement('button');
-      btn.textContent = '⚲ analyze selection'; btn.className = 'help-btn';
-      btn.title = 'DE of the lassoed/searched selection vs the rest';
+      btn.textContent = '⚲ DE'; btn.className = 'help-btn';
+      btn.title = 'differential expression of the lassoed/searched selection vs the rest';
       btn.style.marginLeft = '6px';
       controls.appendChild(btn);
       btn.addEventListener('click', async () => {
