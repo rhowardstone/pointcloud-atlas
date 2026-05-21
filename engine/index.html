@@ -2557,25 +2557,34 @@ document.addEventListener('click', e => {
   }
 
   // ---- color override -----------------------------------------------------
+  // feat = a lazily-fetched continuous feature (e.g. a gene from the backend)
+  let feat = null;   // {vals:Float32Array, lo, hi, label}
   getColor = function (d, mode) {
-    const c = spec[mode];
     let col = [150, 150, 150];
-    if (c) {
-      if (c.kind === 'categorical') {
-        col = (c.palette && c.palette[codeOf(d, c)]) || [150, 150, 150];
-      } else {
-        const [lo, hi] = c.range;
-        col = ramp(CM[c.colormap] || CM.viridis, hi > lo ? (valOf(d, c) - lo) / (hi - lo) : 0);
+    if (mode === '__feature' && feat) {
+      col = ramp(CM.inferno, feat.hi > feat.lo ? (feat.vals[d._i] - feat.lo) / (feat.hi - feat.lo) : 0);
+    } else {
+      const c = spec[mode];
+      if (c) {
+        if (c.kind === 'categorical') col = (c.palette && c.palette[codeOf(d, c)]) || [150, 150, 150];
+        else { const [lo, hi] = c.range;
+          col = ramp(CM[c.colormap] || CM.viridis, hi > lo ? (valOf(d, c) - lo) / (hi - lo) : 0); }
       }
     }
-    // respect the Display-panel alpha slider (drives currentZoomAlpha)
     return [col[0], col[1], col[2], (typeof currentZoomAlpha === 'number' ? currentZoomAlpha : 200)];
   };
 
   // ---- legend override ----------------------------------------------------
+  const gradLegend = (label, lo, hi, stops) => {
+    const grad = stops.map((s, i) => `rgb(${s.join(',')}) ${Math.round(100*i/(stops.length-1))}%`).join(',');
+    return `<div style="font-size:11px;color:var(--muted);margin-bottom:4px;">${label}</div>` +
+      `<div style="height:12px;border-radius:3px;background:linear-gradient(to right,${grad});"></div>` +
+      `<div style="display:flex;justify-content:space-between;font-size:10px;color:var(--muted);margin-top:2px;"><span>${(+lo).toPrecision(3)}</span><span>${(+hi).toPrecision(3)}</span></div>`;
+  };
   buildLegend = function () {
     const el = document.getElementById('legend');
     if (!el) return;
+    if (colorMode === '__feature' && feat) { el.innerHTML = gradLegend(feat.label, feat.lo, feat.hi, CM.inferno); return; }
     const c = spec[colorMode];
     if (!c) { el.innerHTML = ''; return; }
     if (c.kind === 'categorical') {
@@ -2781,6 +2790,82 @@ document.addEventListener('click', e => {
     }
   }
 
+  // ---- Interactive backend: color-by-any-gene + lasso→DE (if endpoints set) ─
+  function selectedIndices() {
+    const out = [];
+    if (typeof searchMatchSet !== 'undefined' && searchMatchSet)
+      for (const d of docs) if (searchMatchSet.has(d.nid)) out.push(d._i);
+    return out;
+  }
+  function panel() {
+    let p = document.getElementById('sc1-analysis');
+    if (!p) {
+      p = document.createElement('div'); p.id = 'sc1-analysis';
+      p.style.cssText = 'position:fixed;right:12px;top:140px;width:240px;max-height:60vh;overflow:auto;'
+        + 'background:rgba(20,22,30,.96);border:1px solid #2a2e3a;border-radius:8px;padding:10px;'
+        + 'font-size:11px;color:#cdd3e0;z-index:50;display:none;';
+      document.body.appendChild(p);
+    }
+    return p;
+  }
+  function wireInteractive() {
+    const controls = document.querySelector('.topbar .controls') || document.querySelector('.topbar');
+    if (cfg.feature_endpoint && controls) {
+      const inp = document.createElement('input');
+      inp.placeholder = 'color by gene…'; inp.title = 'type a gene/feature name + Enter';
+      inp.style.cssText = 'width:110px;margin-left:6px;background:#11141c;color:#cdd3e0;border:1px solid #2a2e3a;border-radius:4px;padding:2px 6px;';
+      controls.insertBefore(inp, controls.firstChild);
+      inp.addEventListener('keydown', async e => {
+        if (e.key !== 'Enter' || !inp.value.trim()) return;
+        const g = inp.value.trim();
+        try {
+          const r = await fetch(cfg.feature_endpoint.replace('{id}', encodeURIComponent(g)));
+          if (!r.ok) { inp.style.borderColor = '#e0533b'; return; }
+          inp.style.borderColor = '#2a2e3a';
+          const v = new Float32Array(await r.arrayBuffer());
+          let lo = Infinity, hi = -Infinity; for (const x of v) { if (x < lo) lo = x; if (x > hi) hi = x; }
+          feat = { vals: v, lo, hi, label: g + ' (feature)' };
+          colorMode = '__feature';
+          const cb2 = document.getElementById('color-by'); if (cb2) cb2.selectedIndex = -1;
+          buildLegend(); activeDataCache = null; rerender();
+        } catch (_) { inp.style.borderColor = '#e0533b'; }
+      });
+    }
+    if (cfg.de_endpoint && controls) {
+      const btn = document.createElement('button');
+      btn.textContent = '⚲ analyze selection'; btn.className = 'help-btn';
+      btn.title = 'DE of the lassoed/searched selection vs the rest';
+      btn.style.marginLeft = '6px';
+      controls.appendChild(btn);
+      btn.addEventListener('click', async () => {
+        const idx = selectedIndices(); const p = panel(); p.style.display = '';
+        if (idx.length < 5) { p.innerHTML = 'Select ≥5 cells first (Shift-drag a lasso, or search), then click again.'; return; }
+        p.innerHTML = `Running DE on ${idx.length} selected cells…`;
+        try {
+          const r = await fetch(cfg.de_endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ indices: idx }) });
+          const j = await r.json();
+          if (j.error) { p.innerHTML = 'Error: ' + j.error; return; }
+          const genes = j.up || [];
+          p.innerHTML = `<div style="font-weight:600;margin-bottom:4px;">DE: ${j.n_selected} cells vs rest</div>`
+            + `<div style="color:var(--muted);margin-bottom:4px;">top up-regulated genes:</div>`
+            + genes.map(g => `<span style="display:inline-block;background:#1c2030;border-radius:3px;padding:1px 5px;margin:1px;">${g}</span>`).join('')
+            + (cfg.enrich_endpoint ? `<div style="margin-top:8px;"><button id="sc1-enrich" class="help-btn">enrich these →</button></div><div id="sc1-enrich-out" style="margin-top:6px;"></div>` : '');
+          const eb = document.getElementById('sc1-enrich');
+          if (eb) eb.addEventListener('click', async () => {
+            const out = document.getElementById('sc1-enrich-out'); out.textContent = 'enriching…';
+            const er = await fetch(cfg.enrich_endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ genes }) });
+            const ej = await er.json();
+            out.innerHTML = (ej.terms || []).slice(0, 8).map(t =>
+              `<div>• ${t.name} <span style="color:var(--muted)">(${(+t.p_value).toExponential(1)})</span></div>`).join('')
+              || ('error: ' + (ej.error || '?'));
+          });
+        } catch (e) { p.innerHTML = 'Request failed: ' + e; }
+      });
+    }
+  }
+
   // ---- apply ---------------------------------------------------------------
   let sizeArr = num;  // alias the continuous-sidecar map for installSizeBy
   loadSidecars().then(() => {
@@ -2788,6 +2873,7 @@ document.addEventListener('click', e => {
     installSizeBy();
     buildFilterRail();
     wireSearch();
+    wireInteractive();
     buildLegend();
     rerender();
   });
