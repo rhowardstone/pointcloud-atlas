@@ -2813,6 +2813,51 @@ document.addEventListener('click', e => {
       for (const d of docs) if (searchMatchSet.has(d.nid)) out.push(d._i);
     return out;
   }
+
+  // ---- public API so an analysis panel can add computed results as color-by
+  // attributes and recolor the cloud (used by sc1-py's analysis side-panel) -----
+  const PAL = [[31,119,180],[255,127,14],[44,160,44],[214,39,40],[148,103,189],[140,86,75],
+    [227,119,194],[127,127,127],[188,189,34],[23,190,207],[174,199,232],[255,187,120],
+    [152,223,138],[255,152,150],[197,176,213],[196,156,148],[247,182,210],[199,199,199],
+    [219,219,141],[158,218,229]];
+  function addOption(key, label) {
+    const cb2 = document.getElementById('color-by');
+    if (cb2 && !cb2.querySelector(`option[value="${CSS.escape(key)}"]`)) {
+      const o = document.createElement('option'); o.value = key; o.textContent = label; cb2.appendChild(o);
+    }
+  }
+  window.__atlas = {
+    n: () => docs.length,
+    selected: selectedIndices,
+    config: () => cfg,
+    addContinuous(key, label, vals, colormap = 'viridis') {
+      const a = Float32Array.from(vals); let lo = Infinity, hi = -Infinity;
+      for (const x of a) { if (x < lo) lo = x; if (x > hi) hi = x; }
+      num[key] = a; spec[key] = { key, label, kind: 'continuous', source: 'num:' + key, colormap, range: [lo, hi] };
+      addOption(key, label);
+    },
+    addCategorical(key, label, codes, vocab, palette) {
+      cat[key] = Uint16Array.from(codes);
+      spec[key] = { key, label, kind: 'categorical', source: 'cat:' + key, vocab,
+        palette: palette || vocab.map((_, i) => PAL[i % PAL.length]) };
+      addOption(key, label);
+    },
+    setColor(key) {
+      colorMode = key; feat = null;
+      const cb2 = document.getElementById('color-by'); if (cb2) cb2.value = key;
+      buildLegend(); activeDataCache = null; rerender();
+    },
+    async colorFeature(name) {            // color by a lazily-fetched feature (gene)
+      if (!cfg.feature_endpoint) return false;
+      const r = await fetch(cfg.feature_endpoint.replace('{id}', encodeURIComponent(name)));
+      if (!r.ok) return false;
+      const v = new Float32Array(await r.arrayBuffer());
+      let lo = Infinity, hi = -Infinity; for (const x of v) { if (x < lo) lo = x; if (x > hi) hi = x; }
+      feat = { vals: v, lo, hi, label: name + ' (feature)' }; colorMode = '__feature';
+      const cb2 = document.getElementById('color-by'); if (cb2) cb2.selectedIndex = -1;
+      buildLegend(); activeDataCache = null; rerender(); return true;
+    },
+  };
   function panel() {
     let p = document.getElementById('sc1-analysis');
     if (!p) {
