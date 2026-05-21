@@ -841,8 +841,14 @@ function recomputeComposite() {
   let acc = null;
   for (const c of constraints) {
     if (!c.matchSet) continue;
-    if (acc === null) { acc = new Set(c.matchSet); }
-    else { const nx = new Set(); for (const e of acc) if (c.matchSet.has(e)) nx.add(e); acc = nx; }
+    if (acc === null) {
+      if (c.inverted) { acc = new Set(); for (const d of docs) if (!c.matchSet.has(d.nid)) acc.add(d.nid); }
+      else acc = new Set(c.matchSet);
+    } else {
+      const nx = new Set();
+      for (const e of acc) if (c.inverted ? !c.matchSet.has(e) : c.matchSet.has(e)) nx.add(e);
+      acc = nx;
+    }
   }
   searchMatchSet = acc;                                                   // null = nothing selected
   appliedLassos = constraints.filter(c => c.kind === 'lasso').map(c => c.payload);
@@ -904,8 +910,10 @@ function renderPills() {
     pill.innerHTML = '<span class="pill-glyph">' + (GLYPH[c.kind] || '•') + '</span>'
       + '<span class="pill-label"></span>'
       + '<span class="pill-count">' + n + '</span>'
+      + '<button class="pill-inv" title="Invert (NOT this selection)" style="cursor:pointer;background:none;border:none;color:inherit;font-weight:700">' + (c.inverted ? '¬' : '∋') + '</button>'
       + '<button class="pill-x" title="Remove this filter">✕</button>';
-    pill.querySelector('.pill-label').textContent = c.label || c.kind;
+    pill.querySelector('.pill-label').textContent = (c.inverted ? 'NOT ' : '') + (c.label || c.kind);
+    pill.querySelector('.pill-inv').addEventListener('click', () => { c.inverted = !c.inverted; recomputeComposite(); });
     pill.querySelector('.pill-x').addEventListener('click', () => removeConstraintAt(i));
     bar.appendChild(pill);
   });
